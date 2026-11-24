@@ -46,13 +46,15 @@ def test_the_command_line_without_pygobject_says_what_to_install(monkeypatch, ca
 
 
 def test_the_application_id_is_written_once():
-    """The application ID (the window, the background watcher, the desktop file, the icons)
-    is written in paths.py alone; every other module takes it from there."""
+    """The application ID (the window, the background watcher, the sign-in window, the desktop
+    file, the icons) is written in paths.py alone, the Flatpak's and the one of the version from
+    source; every other module takes it from there."""
     import ast
 
     written = []
     for path in sorted((ROOT / "openexpress").rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Constant) and node.value == "io.github.tomaszbojanowski.OpenExpress":
+            if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and node.value.startswith("io.github.tomaszbojanowski.OpenExpress")):
                 written.append(path.relative_to(ROOT).as_posix())
     assert written == ["openexpress/paths.py"]

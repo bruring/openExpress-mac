@@ -16,15 +16,95 @@ public struct InstallPlan: Identifiable, Sendable, Hashable {
     public enum Action: Sendable, Hashable {
         /// Install All: these software parts, then every map update.
         case installAll(parts: [String], updateMaps: Bool)
-        /// One map not yet on the device.
-        case installMap(String)
+        /// One map not yet on the device, on its own storage (`nil`, `.internal`) or its card.
+        case installMap(String, to: MapLocation? = nil)
+        /// One map moved to the device's other storage (or, on both, kept on this one).
+        case moveMap(String, to: MapLocation)
     }
 
     public var id: String { items.map(\.id).joined(separator: "|") }
     public var items: [Item]
     public var action: Action
-    /// Free space on the device now, when known.
+    /// Free space where it goes now (the device's own storage, or its card), when known.
     public var freeNow: Int64?
+    /// A move of a map on both storages: one copy is kept, the other removed.
+    public var keepsOne = false
+    /// The device's card in this Mac's card reader (its volume): written there, not over USB.
+    public var cardReader: String?
+    /// A move: where its files come from.
+    public var source: MoveSource = .device
+    /// Bytes of it in the engine's download cache: neither downloaded nor read again.
+    public var cachedBytes: Int64 = 0
+    /// The speed maps last downloaded at (bytes a second), when known.
+    public var downloadSpeed: Double?
+
+    /// How fast the device writes its memory card over USB and reads its own storage (measured
+    /// on a GPSMAP H1i Plus; Garmin Express writes the card as slowly), and about how fast a
+    /// Mac's card reader writes the card.
+    public static let cardOverUSB: Double = 3_900_000
+    public static let readOverUSB: Double = 8_000_000
+    public static let internalOverUSB: Double = 11_700_000
+    public static let cardInReader: Double = 60_000_000
+    /// From this long over USB on, the card reader is offered.
+    public static let readerOfferedFrom: Double = 120
+
+    private var notCached: Double { Double(max(0, totalBytes - cachedBytes)) }
+
+    /// Seconds to get the files of a move (what the cache does not have) from `source`: read off
+    /// the device, or downloaded at the speed downloads last went (nil when not known).
+    public func secondsGetting(from source: MoveSource) -> Double? {
+        switch source {
+        case .device: notCached / Self.readOverUSB
+        case .download: downloadSpeed.map { notCached / $0 }
+        }
+    }
+
+    /// Seconds a plan gets its files before writing them: a move from its source, an install
+    /// its download (0 when its speed is not known).
+    private var secondsGetting: Double {
+        isMove ? secondsGetting(from: source) ?? 0 : downloadSpeed.map { notCached / $0 } ?? 0
+    }
+
+    /// Seconds to write the card over USB, for a plan that writes it (its files got first).
+    public var secondsOverUSB: Double? {
+        toCard && !keepsOne && totalBytes > 0
+            ? secondsGetting + Double(totalBytes) / Self.cardOverUSB : nil
+    }
+
+    /// The same with the card in this Mac's card reader.
+    public var secondsInReader: Double? {
+        secondsOverUSB == nil ? nil : secondsGetting + Double(totalBytes) / Self.cardInReader
+    }
+
+    /// The whole of a move from `source`, written over USB: to the card, or to the device.
+    public func secondsMoving(from source: MoveSource) -> Double? {
+        guard isMove, !keepsOne, let getting = secondsGetting(from: source) else { return nil }
+        return getting + Double(totalBytes) / (toCard ? Self.cardOverUSB : Self.internalOverUSB)
+    }
+
+    /// The faster source of a move, when both are known; else the device.
+    public var fasterSource: MoveSource {
+        guard let device = secondsMoving(from: .device), let download = secondsMoving(from: .download)
+        else { return .device }
+        return download < device ? .download : .device
+    }
+
+    /// Long enough over USB to offer the card reader.
+    public var offersCardReader: Bool { (secondsOverUSB ?? 0) >= Self.readerOfferedFrom && cardReader == nil }
+
+    /// Where it goes: the memory card, else the device's own storage.
+    public var toCard: Bool {
+        switch action {
+        case .installMap(_, let to), .moveMap(_, let to as MapLocation?): to == .card
+        case .installAll: false
+        }
+    }
+
+    /// A move: nothing is downloaded, the map's files are copied on the device.
+    public var isMove: Bool {
+        if case .moveMap = action { return true }
+        return false
+    }
 
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.size } }
     public var freeAfter: Int64? { freeNow.map { $0 - totalBytes } }
@@ -40,7 +120,7 @@ public struct InstallPlan: Identifiable, Sendable, Hashable {
 @Observable
 public final class DeviceModel: Identifiable {
     public enum OperationKind: String, Sendable {
-        case sync, backup, installUpdates, mapsInstall, mapsUpdate, mapsRemove
+        case sync, backup, installUpdates, mapsInstall, mapsUpdate, mapsRemove, mapsMove
 
         public var title: String {
             switch self {
@@ -50,6 +130,7 @@ public final class DeviceModel: Identifiable {
             case .mapsInstall: String(localized: "Installing Maps")
             case .mapsUpdate: String(localized: "Updating Maps")
             case .mapsRemove: String(localized: "Removing Maps")
+            case .mapsMove: String(localized: "Moving Maps")
             }
         }
     }
@@ -58,6 +139,8 @@ public final class DeviceModel: Identifiable {
         public var kind: OperationKind
         public var progress: EngineProgress?
         public var cancelling = false
+        /// The download or transfer speed, while bytes are moved.
+        public var rate = TransferRate()
 
         /// "Downloading · TopoActive Europe".
         public var detail: String {
@@ -124,6 +207,8 @@ public final class DeviceModel: Identifiable {
     public static let trackCacheLimit = 50
     /// An install waiting for the user's confirmation.
     public var pendingPlan: InstallPlan?
+    /// A plan to run with the card in this Mac's card reader, waiting for the card.
+    public var pendingReaderPlan: InstallPlan?
     /// The first sync of this device waits for the choice: everything, or new data only.
     public var needsFirstSyncChoice = false
 
@@ -357,16 +442,36 @@ public final class DeviceModel: Identifiable {
                                   freeNow: freeSpace)
     }
 
-    /// Installs a map not yet on the device; a large one is confirmed first.
-    public func requestInstall(map: DeviceMap) {
-        let plan = InstallPlan(
+    /// Installs a map not yet on the device, on its own storage or (`to: .card`) its memory
+    /// card; a large one is confirmed first, as is every install on the card.
+    public func requestInstall(map: DeviceMap, to: MapLocation? = nil) {
+        var plan = InstallPlan(
             items: [.init(id: "map:" + map.name, kind: .map, name: map.name, change: map.versionChange, size: map.size)],
-            action: .installMap(map.name), freeNow: freeSpace)
-        if map.size >= InstallPlan.largeMap {
+            action: .installMap(map.name, to: to), freeNow: to == .card ? maps?.card?.free : freeSpace)
+        plan.cachedBytes = map.cachedSize ?? 0
+        plan.downloadSpeed = maps?.downloadSpeed
+        if map.size >= InstallPlan.largeMap || to == .card {
             pendingPlan = plan
         } else {
             perform(plan)
         }
+    }
+
+    /// Moves a map to the device's other storage (`to`), or keeps one on both storages on
+    /// `to` alone; always confirmed first.
+    public func requestMove(map: DeviceMap, to: MapLocation) {
+        let change = to == .card ? String(localized: "Device → Memory Card") : String(localized: "Memory Card → Device")
+        let both = map.location == .both
+        var plan = InstallPlan(
+            items: [.init(id: "move:" + map.name, kind: .map, name: map.name,
+                          change: both ? String(localized: "On both storages") : change,
+                          size: both ? 0 : map.moveSize ?? map.size)],
+            action: .moveMap(map.name, to: to), freeNow: to == .card ? maps?.card?.free : freeSpace,
+            keepsOne: both)
+        plan.cachedBytes = map.moveCached ?? 0
+        plan.downloadSpeed = maps?.downloadSpeed
+        plan.source = plan.fasterSource
+        pendingPlan = plan
     }
 
     /// Runs a confirmed plan.
@@ -390,8 +495,11 @@ public final class DeviceModel: Identifiable {
             } then: { [weak self] in
                 await self?.load(.updates)
             }
-        case .installMap(let name):
-            maps(.install, [name])
+        case .installMap(let name, let to):
+            maps(.install, [name], to: to, cardReader: plan.cardReader)
+        case .moveMap(let name, let to):
+            maps(.move, [name], to: to, cardReader: plan.cardReader,
+                 source: plan.keepsOne ? nil : plan.source)
         }
     }
 
@@ -413,10 +521,23 @@ public final class DeviceModel: Identifiable {
         }
     }
 
-    public func maps(_ action: MapAction, _ names: [String]) {
+    /// The memory cards in this Mac's card reader, and which is this device's; nil when the
+    /// engine could not say.
+    public func cardReaders() async -> CardReaderList? {
+        try? await engine.cardReaders(unitID)
+    }
+
+    public func maps(_ action: MapAction, _ names: [String], to: MapLocation? = nil, cardReader: String? = nil,
+                     source: MoveSource? = nil) {
         guard !names.isEmpty else { return }
-        run(action == .install ? .mapsInstall : .mapsRemove) { [engine, unitID] progress in
-            try await engine.maps(action, unitID, names: names, progress: progress).failureMessage
+        let kind: OperationKind = switch action {
+        case .install: .mapsInstall
+        case .remove: .mapsRemove
+        case .move: .mapsMove
+        }
+        run(kind) { [engine, unitID] progress in
+            try await engine.maps(action, unitID, names: names, to: to, cardReader: cardReader,
+                                  source: source, progress: progress).failureMessage
         } then: { [weak self] in
             await self?.load(.maps)
         }
@@ -443,7 +564,10 @@ public final class DeviceModel: Identifiable {
         operationTask = Task {
             let progress: @Sendable (EngineProgress) -> Void = { p in
                 Task { @MainActor in
-                    if self.operation?.kind == kind { self.operation?.progress = p }
+                    if self.operation?.kind == kind {
+                        self.operation?.progress = p
+                        self.operation?.rate.record(p)
+                    }
                 }
             }
             do {

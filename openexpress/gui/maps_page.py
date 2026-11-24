@@ -5,19 +5,18 @@ mixin of MainWindow (gui/app.py), without __init__ of its own; what it uses of t
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402 - imports must follow gi.require_version
+from gi.repository import Adw, GLib, Gtk  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import answers, service  # noqa: E402
 from openexpress.gui.hidden_reading import read_again  # noqa: E402
 from openexpress.gui.tasks import read_again_after_failure, writes_to_device  # noqa: E402
-from openexpress.gui.window_tasks import Answer, confirm  # noqa: E402
+from openexpress.gui.window_tasks import Answer, choose_local_file, confirm  # noqa: E402
 from openexpress.gui.words import free_after_text, space_text  # noqa: E402
 from openexpress.i18n import _, caption, human_size  # noqa: E402
 
@@ -65,7 +64,7 @@ def _no_maps(win, sec, text: str, detail: str | None = None) -> None:
 
 def unseen_map_text() -> str:
     # TRANSLATORS: on the Maps page, under a map whose files are in a folder the device hides
-    # from the ordinary USB connection (a car navigator's .System), without a full stop
+    # from the file manager (a car navigator's .System), without a full stop
     return _("Cannot be read: openExpress cannot see the folder of its files on this device")
 
 
@@ -97,7 +96,7 @@ class MapsPage:
                 # on it (Garmin's list: none, so their names alone are kept apart).
                 return (None, ownmaps.overview(s.device, s.storage, []), (None, None),
                         e.map_update_type, [], isinstance(e, mp.DeviceHasNoMaps))
-            mp.mark_waiting(s.storage, result[0])  # written or removed, not taken in yet
+            mp.mark_waiting(s.storage, result[0], s.device)  # written or removed, not taken in yet
             # The space too: asked of the device here, never as the page is drawn; and the
             # old files Garmin's cleanup rules would take (only shown in the questions).
             return (result, ownmaps.overview(s.device, s.storage, result[0]),
@@ -305,25 +304,9 @@ class MapsPage:
         return True
 
     def choose_map(self) -> None:
-        dialog = Gtk.FileDialog(title=_("Choose a Map File (.img)"))
-        only_maps = Gtk.FileFilter(name=_("Garmin map files (*.img)"))
-        only_maps.add_pattern("*.img")
-        only_maps.add_pattern("*.IMG")
-        filters = Gio.ListStore.new(Gtk.FileFilter)
-        filters.append(only_maps)
-        dialog.set_filters(filters)
-
-        def chosen(dlg, res):
-            try:
-                path = dlg.open_finish(res).get_path()
-            except GLib.Error:
-                return  # cancelled
-            if path is None:
-                self.toast(_("Choose a file stored on this computer"))
-                return
-            self.add_own_map(Path(path))
-
-        dialog.open(self, None, chosen)
+        choose_local_file(self, _("Choose a Map File (.img)"), _("Garmin map files (*.img)"),
+                          ("*.img", "*.IMG"), _("Choose a file stored on this computer"),
+                          self.add_own_map)
 
     @staticmethod
     def _add_map_text(plan) -> str:
@@ -521,7 +504,7 @@ class MapsPage:
                     m, self.maps_cache, s.storage,
                     activate=lambda ident: s.client.activate_maps(s.device.raw, [ident]),
                     session=s.client.http, progress=self.progress,
-                    url_salt=s.client.consumer.url_salt)),
+                    url_salt=s.client.consumer.url_salt, device=s.device)),
                 # TRANSLATORS: toast after a map of Garmin was installed; {name}: the map's name
                 lambda rep: (self.toast(_("Copied {name}; unplug the device to load it")
                                         .format(name=m.name)),
@@ -544,7 +527,8 @@ class MapsPage:
             self.run_task(
                 _("Removing {name}…").format(name=m.name),
                 writes_to_device(lambda: mp.uninstall(m, self.maps_cache, s.storage,
-                                                      progress=self.progress)),
+                                                      progress=self.progress,
+                                                      device=s.device)),
                 lambda removed: (self.toast(self._removed_files(len(removed))),
                                  self.load_section("maps", force=True)),
                 read_again_after_failure(self, "maps"), failed_title=_("Map Not Removed"))

@@ -602,7 +602,10 @@ def test_maps_command_does_not_say_no_maps_when_the_check_fails(
         captured = capsys.readouterr()
         assert NO_MAPS_TEXT not in captured.out + captured.err
         assert captured.out == "" and "up to date" not in captured.err
-        assert "Server error: Map check" in captured.err and "Traceback" not in captured.err
+        said = ("Network error: could not reach the Garmin server (no connection)" if error
+                else f"Error: Map check: server error (HTTP {status})" if status >= 500
+                else "Server error: Map check")
+        assert said in captured.err and "Traceback" not in captured.err
 
 
 def _children(widget):
@@ -1026,7 +1029,7 @@ def _refresh_window(page, device_root, maps_answers=(), updates_answers=()):
         connected=Connected(),  # the devices connected, for the start page
         show_overview=show_overview, show_maps=show_maps, show_updates=show_updates,
         load_apps=None, load_music=None, load_activities=None,  # other pages: not loaded here
-        run_task=RunNow(),
+        run_task=RunNow(), progress=lambda text: None,
         in_background=lambda work, done, failed=None: run(work, done, failed))
     for name in ("show_device", "show_no_device", "_clear_device_pages", "load_section",
                  "_load", "load_maps", "load_updates",
@@ -2081,9 +2084,9 @@ def test_up_to_date_in_polish_fits_the_software_and_a_map(server):
 @pytest.mark.parametrize(("language", "written", "unlocks", "said"), [
     ("en", 1, 2, ["Wrote 1 map file.", "Unlock files written: 2"]),
     ("en", 5, 1, ["Wrote 5 map files.", "Unlock files written: 1"]),
-    ("pl", 1, 1, ["Zapisano 1 plik mapy.", "Zapisane pliki odblokowujące: 1"]),
-    ("pl", 3, 1, ["Zapisano 3 pliki map.", "Zapisane pliki odblokowujące: 1"]),
-    ("pl", 5, 2, ["Zapisano 5 plików map.", "Zapisane pliki odblokowujące: 2"]),
+    ("pl", 1, 1, ["Zapisano 1 plik mapy.", "Zapisane pliki odblokowania: 1"]),
+    ("pl", 3, 1, ["Zapisano 3 pliki map.", "Zapisane pliki odblokowania: 1"]),
+    ("pl", 5, 2, ["Zapisano 5 plików map.", "Zapisane pliki odblokowania: 2"]),
 ])
 def test_the_files_written_each_count_in_its_own_words(server, device_root, xdg, monkeypatch,
                                                        capsys, language, written, unlocks, said):

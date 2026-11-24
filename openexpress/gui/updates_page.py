@@ -18,6 +18,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import answers, known_devices, service  # noqa: E402
+from openexpress.applog import error_text  # noqa: E402
 from openexpress.connect import ApiError  # noqa: E402
 from openexpress.device.gio_storage import (  # noqa: E402
     DriveNotMounted,
@@ -32,7 +33,6 @@ from openexpress.gui.window_tasks import (  # noqa: E402
     WRAP_BOX,
     Answer,
     confirm,
-    error_text,
     inform,
     still_in_window,
     wrapping_row,
@@ -41,6 +41,8 @@ from openexpress.gui.words import (  # noqa: E402
     copied_update_text,
     not_installed_advice,
     not_installed_text,
+    ready_heading,
+    ready_line,
     software_text,
     update_state_text,
 )
@@ -90,13 +92,14 @@ def hidden_software_text(folder: str) -> str:
     # install; {folder}: the folder of the device's top level, e.g. .System
     text = pgettext("updates page", "openExpress cannot see the folder {folder}, where this "
                     "device keeps its software, so it installs nothing there. Some devices, such "
-                    "as car navigators, hide it from the ordinary USB connection.")
+                    "as car navigators, hide it from the file manager.")
     return text.format(folder=folder)
 
 
 def replaces_text(u) -> str:
-    # TRANSLATORS: in the question before an update into a folder the device hides: the file of
-    # its name on the device is deleted before the new one is written; {file}: e.g. gmaptz.img
+    # TRANSLATORS: in the question before an update whose file is on the device where the file
+    # manager does not see it (in a folder or as a file the device hides): the new file takes the
+    # place of the one of its name; {file}: e.g. gmaptz.img
     return _("The update replaces the file {file} on the device.").format(file=u.filename)
 
 
@@ -117,15 +120,23 @@ def not_read_text(u) -> str | None:
         return None
     if u.hidden_session == hidden_folders.NO_USB:
         # TRANSLATORS: on the Updates page; {folder}: a folder the device hides from the
-        # ordinary USB connection, e.g. .System
+        # file manager, e.g. .System
         text = pgettext("updates page", "The Flatpak version has no access to USB devices, so "
                         "it cannot read the folder {folder}. Give it the permission (see the "
                         "README) or use the version from source.")
+    elif u.hidden_session == hidden_folders.FAILED:
+        # TRANSLATORS: on the Updates page, a line under its heading, without a full stop: the
+        # connection could be opened, but the folder could not be read this time (e.g. the device
+        # was busy); {folder}: a folder the device hides from the file manager, e.g. .System;
+        # {button}: the name of the button Check Again of this page
+        text = pgettext("updates page", "openExpress could not read the folder {folder} this "
+                        "time; use “{button}” to try once more")
+        return text.format(folder=u.hidden_folder, button=_("Check Again"))
     else:
-        # TRANSLATORS: on the Updates page; {folder}: a folder the device hides from the
-        # ordinary USB connection, e.g. .System
-        text = pgettext("updates page", "openExpress cannot open its own USB session with this "
-                        "device, so it cannot read the folder {folder}.")
+        # TRANSLATORS: on the Updates page, a line under its heading, without a full stop;
+        # {folder}: a folder the device hides from the file manager, e.g. .System
+        text = pgettext("updates page", "openExpress cannot open a direct USB connection to "
+                        "this device, so it cannot read the folder {folder}")
     return text.format(folder=u.hidden_folder)
 
 
@@ -211,6 +222,12 @@ def _install_task(win, s, chosen):
         if not mass_storage:
             tell_update_done(win, s, rep)
             return
+        if rep.failed:
+            from openexpress import updates as upd
+
+            # TRANSLATORS: heading of the message after some of the updates were copied and
+            # others were not (the list says which and why)
+            win.error(_("Not All Updates Installed"), upd.failed_text(rep))
         win.eject_device(s, bike_accessory)
 
     def failed(e) -> bool:
@@ -222,10 +239,36 @@ def _install_task(win, s, chosen):
     return install, installed, failed
 
 
+def folders_hidden_text(updates) -> str:
+    """The note of a group of rows some of which go to a folder the device hides inside a folder
+    that is seen (folder_hidden): once for the group, the rows say it in short; each row's path
+    is its tooltip, and the log names the folders. "" when none."""
+    count = sum(1 for u in updates if u.refused_inside)
+    if not count:
+        return ""
+    # TRANSLATORS: the note of a group on the Updates page: updates whose folder the device
+    # hides from the file manager, which openExpress writes only over a direct USB connection
+    # and cannot open to this device; the rows say it in short
+    return ngettext("{count} of these cannot be installed: the device keeps it in a folder it "
+                    "hides from the file manager, and openExpress cannot open a direct USB "
+                    "connection to this device (the Flatpak version needs access to USB devices "
+                    "for it, see the README). The others install as usual.",
+                    "{count} of these cannot be installed: the device keeps them in folders it "
+                    "hides from the file manager, and openExpress cannot open a direct USB "
+                    "connection to this device (the Flatpak version needs access to USB devices "
+                    "for it, see the README). The others install as usual.",
+                    count).format(count=count)
+
+
 def tell_update_done(win, s, rep) -> None:
     """The message after updates were copied to the device of session `s` over MTP: what to
-    do next, and how many updates are still available. A message, not an error."""
+    do next, those not installed and why, and how many updates are still available. A message,
+    not an error."""
+    from openexpress import updates as upd
+
     text = UpdatesPage._update_done_text(rep)
+    if rep.failed:
+        text += "\n\n" + upd.failed_text(rep)
     still = still_available_text(win, s)
     # TRANSLATORS: heading of the message after an update was copied to the device or its
     # drive was ejected (not a button)
@@ -295,7 +338,8 @@ def shown_severity(u) -> str:
 def offers_button(u, waits_for=None) -> bool:
     """Whether the row of update `u` has its Install or Reinstall button: not while the file it
     goes to holds an update copied already (`waits_for`), not when its folder was not read, and
-    not when the reinstall is refused (an older version, another or an uncompared file)."""
+    not when the reinstall is refused (an older version, another or an uncompared file). One
+    whose folder the device hides inside a folder that is seen has it, off (folder_hidden)."""
     from openexpress import updates as upd
 
     return waits_for is None and not u.hidden_unread and not upd.reinstall_refused(u)
@@ -371,7 +415,7 @@ class UpdatesPage:
         def work():
             # Asks Garmin's server, then compares the offered files with those on the device.
             answer = s.client.software_updates(s.device.raw, include_reinstalls=True)
-            items = upd.offered(s.storage, answer, s.device)
+            items = upd.offered(s.storage, answer, s.device, progress=self.progress)
             # The kind of device, for the question before an update (it asks no server):
             # usually known already from opening the device.
             try:
@@ -424,7 +468,7 @@ class UpdatesPage:
         titles = [u.title.casefold() for u in (*rest, *re, *untaken)]
         twins = {title for title in titles if titles.count(title) > 1}
         if rest:
-            g = sec.group(_("Available Updates"))
+            g = sec.group(_("Available Updates"), description=folders_hidden_text(rest))
             for u in rest:
                 self._update_row(g, u, waits_for=waiting.get(u.device_path.casefold()),
                                  with_file=u.title.casefold() in twins)
@@ -440,7 +484,7 @@ class UpdatesPage:
         if re or extra:
             # TRANSLATORS: heading of a group on the Updates page that holds the reinstall of
             # components already on the device
-            g = sec.group(_("Advanced"))
+            g = sec.group(_("Advanced"), description=folders_hidden_text(re))
         if extra:
             # TRANSLATORS: title of a row on the Updates page: items Garmin offers to add to the
             # device (voices, vehicles of a car navigator) that it does not have
@@ -465,20 +509,19 @@ class UpdatesPage:
     def _updates_status(self, sec, system, count: int, beta: bool = False, ready=(),
                         only=None, installable=(), untaken=()) -> None:
         """Builds the top of the Updates page in `sec`: the state of the updates as the row
-        "Device Software" says it (update_state_text), under it the `system` update or the
-        device's version. The state: `count` to install (`only`: the one of them); some
-        copied that wait for the device (`ready`), with `count` still to install; when
+        "Device Software" says it (update_state_text; copied ones that wait: a short heading
+        and what to do under it), under it the `system` update or the device's version. The
+        state: `count` to install (`only`: the one of them); some copied that wait for the
+        device (`ready`), with `count` still to install; when
         nothing else is to do, those copied and not installed by the device although it was
         unplugged since (`untaken`), without Eject or Install; else up to date. `beta`:
         Garmin offers the device beta versions. More than one update `installable`: Install
         All, one question and one copy (a drive is ejected once after all of them; each
         Install ejects it after its own)."""
-        from openexpress import updates as upd
-
         d = self.session.device
         mass_storage = getattr(self.session, "mass_storage", False)
         installed = software_text(d.software_version_str)
-        detail = note = advice = None
+        todo = detail = note = advice = None
         buttons = []
         if system is not None:
             icon = "software-update-available-symbolic"
@@ -506,12 +549,13 @@ class UpdatesPage:
                                             lambda u=system: self.confirm_update(u),
                                             "suggested-action" if note is None else None))
         elif ready:
-            # What to do is in the title (as on the row "Device Software"), with how many are
-            # still to install (listed below); under it the versions of the one copied (of
-            # several, the device's software, if it is one of them, and the names of all).
+            # A short heading; under it what to do, with how many are still to install (listed
+            # below), then the versions of the one copied (of several, the device's software,
+            # if it is one of them, and the names of all). The row "Device Software" says the
+            # heading and what to do in one sentence.
             icon = "software-update-available-symbolic"
-            title = update_state_text("ready", count, mass_storage=mass_storage,
-                                      waiting=len(ready))
+            title = ready_heading(len(ready))
+            todo = ready_line(len(ready), count, mass_storage=mass_storage)
             lead = next((u for u in ready if u.is_system), ready[0] if len(ready) == 1 else None)
             if mass_storage:
                 # A drive: the device takes the update once it is ejected.
@@ -554,11 +598,14 @@ class UpdatesPage:
         if system is None and not ready and not count and not untaken:
             image.add_css_class("success")  # up to date only
         box.append(image)
-        for text, styles in ((title, ["title-1"]), (subtitle, ["dim-label"]),
+        # TRANSLATORS: a line under the heading of the Updates page, without a full stop (the
+        # command line has the same sentence with one)
+        beta_line = _("Garmin offers beta software for this device") if beta else None
+        for text, styles in ((title, ["title-1"]), (todo, []), (subtitle, ["dim-label"]),
                              (detail, ["caption", "dim-label"]),
                              (note, ["caption", "dim-label"]),
                              (advice, ["caption", "dim-label"]),
-                             (_(upd.BETA_OFFERED) if beta else None, ["caption", "dim-label"])):
+                             (beta_line, ["caption", "dim-label"])):
             line = _status_line(text, styles)
             if line is not None:
                 box.append(line)
@@ -601,6 +648,11 @@ class UpdatesPage:
             button = offers_button(u, waits_for)
             if u.hidden_unread:
                 subtitle += "\n" + hidden_folder_text(u.hidden_folder)
+            if u.refused_inside:
+                # TRANSLATORS: a line of the row of an update that openExpress cannot install,
+                # because it cannot open a direct USB connection to this device (its group says
+                # more), without a full stop
+                subtitle += "\n" + _("Cannot be installed without a direct USB connection")
         row = Adw.ActionRow(
             # TRANSLATORS: title of the row of an update of the device's own software (firmware), on
             # the Updates page
@@ -612,9 +664,14 @@ class UpdatesPage:
             row.set_tooltip_text(u.device_path)
         if button:
             # TRANSLATORS: button
-            row.add_suffix(self._button(_("Reinstall") if reinstall else _("Install"),
-                                        lambda u=u: self.confirm_update(u),
-                                        None if reinstall else "suggested-action"))
+            b = self._button(_("Reinstall") if reinstall else _("Install"),
+                             lambda u=u: self.confirm_update(u),
+                             None if reinstall else "suggested-action")
+            if not not_installed and u.refused_inside:
+                # There, but off for good: the end of a task turns on only the others.
+                self._action_buttons.remove(b)
+                b.set_sensitive(False)
+            row.add_suffix(b)
         parent.add_row(row) if isinstance(parent, Adw.ExpanderRow) else parent.add(row)
 
     @staticmethod
@@ -631,6 +688,8 @@ class UpdatesPage:
         return text
 
     def confirm_update(self, u) -> None:
+        from openexpress import updates as upd
+
         s = self.session
         # The update clicked, with its -META entries: not another version of its part.
         chosen = [x for x in self.updates_cache if x is u or (
@@ -646,7 +705,7 @@ class UpdatesPage:
                 # A file of its name in a folder the device hides goes first, as Garmin Express
                 # writes there.
                 + ("\n\n" + replaces_text(u)
-                   if u.hidden_folder is not None and u.hidden_size_same is not None else ""))
+                   if upd.known_by_size(u) and u.hidden_size_same is not None else ""))
 
         def install() -> None:
             work, done, failed = _install_task(self, s, chosen)

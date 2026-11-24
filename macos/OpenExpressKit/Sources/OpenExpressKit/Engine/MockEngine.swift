@@ -16,6 +16,9 @@ public actor MockEngine: EngineConnection {
         case empty
         /// As standard, with 280 activities (a well-used watch).
         case many
+        /// A GPSMAP H1i Plus connected with a memory card (a map on it, one on both storages);
+        /// the fēnix 8 and the Edge 1050 remembered.
+        case handheld
     }
 
     public let scenario: Scenario
@@ -45,6 +48,9 @@ public actor MockEngine: EngineConnection {
 
     public static let fenixID = "3491967800"
     public static let edgeID = "3398172205"
+    public static let handheldID = "3412345678"
+    /// The storages maps may be on, by device: the handheld's own and its memory card.
+    private var mapStorages: [String: [MapStorage]] = [:]
 
     public init(scenario: Scenario = .standard, stepDelay: Duration = .milliseconds(350)) {
         self.scenario = scenario
@@ -57,7 +63,7 @@ public actor MockEngine: EngineConnection {
         }
         let fenix = Device(
             unitID: Self.fenixID, name: "fēnix 8 – 47 mm, AMOLED", partNumber: "006-B4536-00",
-            software: "21.19", connected: true,
+            software: "21.19", connected: scenario != .handheld,
             busyBy: scenario == .busy ? "Garmin Express Service" : nil,
             storage: .init(free: 18_740_000_000, capacity: 31_200_000_000),
             lastSync: now.addingTimeInterval(-3600 * 26), lastBackup: now.addingTimeInterval(-3600 * 26))
@@ -65,7 +71,15 @@ public actor MockEngine: EngineConnection {
             unitID: Self.edgeID, name: "Edge 1050", partNumber: "006-B4440-00", software: "33.20",
             connected: false, storage: .init(free: 41_000_000_000, capacity: 59_600_000_000),
             lastSync: now.addingTimeInterval(-86400 * 9))
-        devices = scenario == .empty ? [] : [fenix, edge]
+        let handheld = Device(
+            unitID: Self.handheldID, name: "GPSMAP H1i Plus", partNumber: "006-B4552-00", software: "14.08",
+            connected: true, storage: .init(free: 35_800_000_000, capacity: 61_900_000_000),
+            lastSync: now.addingTimeInterval(-3600 * 50))
+        devices = switch scenario {
+        case .empty: []
+        case .handheld: [fenix, edge, handheld]
+        default: [fenix, edge]
+        }
         updates = [
             Self.fenixID: [
                 SoftwareUpdate(part: "006-B4536-00", name: "System Software", version: "21.22",
@@ -91,6 +105,25 @@ public actor MockEngine: EngineConnection {
             Self.edgeID: [
                 DeviceMap(name: "TopoActive Europe", version: "2025.20", size: 9_800_000_000, installed: true, status: .upToDate, region: "Europe"),
             ],
+            Self.handheldID: [
+                DeviceMap(name: "TopoActive Canada", version: "2026.11", size: 6_300_000_000, installed: true,
+                          status: .upToDate, canInstall: true, canRemove: true, location: .internal,
+                          canMove: true, moveSize: 2_864_971_776),
+                DeviceMap(name: "TopoActive Taiwan", version: "2026.10", size: 143_200_000, installed: true,
+                          status: .upToDate, canInstall: true, canRemove: true, location: .card,
+                          canMove: true, moveSize: 119_967_744),
+                DeviceMap(name: "TopoActive Hong Kong & Macao", version: "2026.10", size: 29_800_000, installed: true,
+                          status: .upToDate,
+                          statusText: "On the device and on its memory card: openExpress does not change it",
+                          canInstall: false, canRemove: false, location: .both, canMove: true, moveSize: 23_949_312),
+                DeviceMap(name: "TopoActive Japan", version: "2026.10", size: 1_100_000_000, installed: false,
+                          status: .available, canInstall: true),
+            ],
+        ]
+        mapStorages[Self.handheldID] = [
+            MapStorage(id: .internal, name: "Internal Storage", free: 35_800_000_000, capacity: 61_900_000_000),
+            MapStorage(id: .card, name: "Memory Card", free: 127_600_000_000, capacity: 127_800_000_000,
+                       removable: true),
         ]
         for id in [Self.fenixID, Self.edgeID] {
             backups[id] = (0..<3).map { i in
@@ -163,7 +196,7 @@ public actor MockEngine: EngineConnection {
                     data: ["program": .string(busy)])
             }
             if !d.connected, ["device.backup", "device.sync", "updates.install", "maps.install",
-                              "maps.update", "maps.remove", "apps.list"].contains(method) {
+                              "maps.update", "maps.remove", "maps.move", "apps.list"].contains(method) {
                 throw EngineError.remote(code: "no_device",
                                          message: "\(d.name) is not connected.", data: nil)
             }
@@ -248,6 +281,8 @@ public actor MockEngine: EngineConnection {
                     "own_maps": [["file": "Alps-Contours.img", "title": "Alps contours", "size": 245_000_000,
                                   "path": "Garmin/Alps-Contours.img"]],
                     "more_available": 0,
+                    "download_speed": unit == Self.handheldID ? 25_000_000 : nil,
+                    "storages": .array(try (mapStorages[unit ?? ""] ?? []).map { try JSONValue(encoding: $0) }),
                     "free": .number(Double(devices.first { $0.unitID == unit }?.storage?.free ?? 0))]
         case "maps.update":
             guard let unit else { throw Self.noDevice }
@@ -260,8 +295,15 @@ public actor MockEngine: EngineConnection {
                 lines.append(.string("\(m.name) updated."))
             }
             return ["exit_code": 0, "lines": .array(lines)]
-        case "maps.install", "maps.remove":
+        case "maps.card_reader":
+            // The handheld's card, as if put in the Mac's reader.
+            return unit == Self.handheldID
+                ? ["volumes": [["path": "/Volumes/MAPCARD", "name": "MAPCARD", "is_card": true, "reason": nil]],
+                   "remembered": true]
+                : ["volumes": [], "remembered": false]
+        case "maps.install", "maps.remove", "maps.move":
             guard let unit else { throw Self.noDevice }
+            let to = p["to"]?.stringValue.flatMap(MapLocation.init(rawValue:))
             var done: [JSONValue] = []
             for name in p["maps"]?.arrayValue?.compactMap(\.stringValue) ?? [] {
                 guard let i = maps[unit]?.firstIndex(where: { $0.name == name }) else {
@@ -271,6 +313,14 @@ public actor MockEngine: EngineConnection {
                 if method == "maps.remove" {
                     maps[unit]?[i].installed = false
                     maps[unit]?[i].status = .available
+                    maps[unit]?[i].location = nil
+                } else if method == "maps.move", let to {
+                    try await simulate(id, phases: [("reading", 6), ("copying", 4), ("removing", 2)], item: name,
+                                       total: maps[unit]?[i].moveSize ?? maps[unit]?[i].size, progress: progress)
+                    maps[unit]?[i].location = to
+                    maps[unit]?[i].canInstall = true   // on one storage again
+                    maps[unit]?[i].canRemove = true
+                    maps[unit]?[i].statusText = nil
                 } else {
                     try await simulate(id, phases: [("downloading", 10), ("copying", 4)], item: name,
                                        total: maps[unit]?[i].size, progress: progress)
@@ -278,6 +328,12 @@ public actor MockEngine: EngineConnection {
                     maps[unit]?[i].status = .upToDate
                     let version = maps[unit]?[i].version
                     maps[unit]?[i].installedVersion = version
+                    if mapStorages[unit] != nil {
+                        let size = maps[unit]?[i].size
+                        maps[unit]?[i].location = to ?? .internal
+                        maps[unit]?[i].canMove = true
+                        maps[unit]?[i].moveSize = size
+                    }
                 }
                 done.append(["name": .string(name), "done": true, "exit_code": 0, "lines": []])
             }
@@ -369,7 +425,7 @@ public actor MockEngine: EngineConnection {
     public static let methods = [
         "hello", "account.status", "account.setup", "account.sign_in_url", "account.sign_in",
         "account.sign_out", "devices.list", "device.info", "device.backup", "device.sync",
-        "updates.list", "updates.install", "maps.list", "maps.install", "maps.update", "maps.remove",
+        "updates.list", "updates.install", "maps.list", "maps.install", "maps.update", "maps.remove", "maps.move", "maps.card_reader",
         "apps.list", "activities.list", "activities.track", "backups.list", "account.readings", "settings.get",
         "settings.set", "strava.status", "strava.connect", "strava.disconnect", "strava.upload", "cancel", "shutdown",
     ]
@@ -397,12 +453,14 @@ public actor MockEngine: EngineConnection {
 
     private func simulate(_ request: Int, phases: [(String, Int)], item: String?, total: Int64? = nil,
                           progress: (@Sendable (EngineProgress) -> Void)?) async throws {
+        let totalBytes = total != nil
         for (phase, steps) in phases {
             let total = total ?? Int64(steps)
             for step in 0...steps {
                 try Task.checkCancellation()
+                // A given total is bytes (a download, a copy), else steps.
                 let ev = EngineProgress(request: request, phase: phase, done: total * Int64(step) / Int64(steps),
-                                        total: total, item: item)
+                                        total: total, item: item, unit: totalBytes ? "bytes" : nil)
                 progress?(ev)
                 broadcaster.yield(.progress(ev))
                 if step < steps { try await Task.sleep(for: stepDelay) }

@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -197,6 +198,17 @@ i18n.setup("en")
 
 
 # --- tests that make GTK widgets need a display ------------------------------------------------
+
+# The versions of GTK and libadwaita, set before any test imports them (setting a version opens
+# no display): a test that imports Adw before any other, in whatever order, gets no PyGIWarning.
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    gi.require_version("Adw", "1")
+except (ImportError, ValueError):  # no PyGObject or no libadwaita: as display_available() finds
+    pass
 
 
 @functools.cache
@@ -547,7 +559,9 @@ def private_dirs(tmp_path, monkeypatch):
     """No test reads or writes the real data, settings or cache of openExpress: every test
     has its own (the log: `log_file`). The same folders as `xdg` gives by name. The folder of
     the other install of this computer (the Flatpak's, which the version from source reads)
-    is the test's own too, empty."""
+    is the test's own too, empty. The marks of a USB session of its own go to the test's
+    runtime folder (tmp_path/runtime), never to the session's: XDG_RUNTIME_DIR itself stays,
+    as the documents portal and the display need it."""
     from openexpress import paths
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -555,6 +569,9 @@ def private_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setattr(paths, "flatpak_data_dir",
                         lambda: tmp_path / "flatpak-data" / "openexpress")
+    (tmp_path / "runtime").mkdir()  # there, as a session's XDG_RUNTIME_DIR always is
+    monkeypatch.setattr(paths, "session_mark_dirs",
+                        lambda: paths.session_mark_dirs_in(str(tmp_path / "runtime")))
 
 
 @pytest.fixture
@@ -630,6 +647,16 @@ def program_locale(monkeypatch):
         os.environ.pop("LC_ALL", None)
     else:
         os.environ["LC_ALL"] = before
+
+
+@pytest.fixture(autouse=True)
+def english_after_each_test():
+    """Every test ends in English, as the tests run: a test that set another language and
+    failed before it set English back leaves no other language to the tests after it."""
+    from openexpress import i18n
+
+    yield
+    i18n.setup("en")
 
 
 @pytest.fixture(autouse=True)
@@ -711,6 +738,10 @@ def usb_nodes(tmp_path, monkeypatch) -> Path:
         monkeypatch.setattr(gio_storage, "_test_drive_said", set())
         # Nor the devices that stopped responding (their places on USB).
         monkeypatch.setattr(gio_storage, "_stalled_at", {})
+        # Nor who used a device for an earlier test (its sessions and operations), nor a window
+        # closed in one (stop_waiting).
+        monkeypatch.setattr(gio_storage, "_in_use_by_device", {})
+        monkeypatch.setattr(gio_storage, "_stop_waiting", threading.Event())
     # Nor the connections whose error logs an earlier test read (diagnostics.at_open).
     from openexpress import diagnostics
 
@@ -719,6 +750,7 @@ def usb_nodes(tmp_path, monkeypatch) -> Path:
     from openexpress import hidden_folders
 
     monkeypatch.setattr(hidden_folders, "_kept", {})
+    monkeypatch.setattr(hidden_folders, "_busy", {})
     # Nor the lines an earlier test logged for a connection (applog.unchanged).
     from openexpress import applog
 

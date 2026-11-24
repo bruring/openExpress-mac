@@ -139,8 +139,8 @@ def test_the_refusal_says_that_registering_the_product_is_not_enough():
     with pytest.raises(NotAccountDevice) as refused:
         service.require_account_device(client, UNIT)
     said = str(refused.value)
-    assert "in Garmin Connect (the phone app, or connect.garmin.com)" in said
-    assert "registering the product on garmin.com is not enough" in said
+    assert "in Garmin Connect (the phone app or connect.garmin.com)" in said
+    assert "Registering the product on garmin.com is not enough" in said
     # and that openExpress can add it itself
     assert "here (Add to Account in the window, openexpress register on the command line" in said
 
@@ -277,7 +277,7 @@ def account_calls(client, device):
         "store_updates": lambda: api.updates(device, [], "en-US"),
         "store_queue_install": lambda: api.queue_install(device, []),
         "store_forget": lambda: api.forget(device, []),
-        "store_icon_urls": lambda: api.icon_urls([ciq.uuid.uuid4()]),
+        "store_icon_urls": lambda: api.icon_urls([ciq.uuid.UUID(int=1)]),
     }
 
 
@@ -483,9 +483,11 @@ def test_cli_refusal_comes_after_the_device_line_also_in_a_pipe(device_root, xdg
 
 @pytest.mark.parametrize("error,line,code", [
     (store.NotLoggedIn("Not logged in."), "Error: Not logged in.", 1),
-    (ApiError("Map check: HTTP 500", 500), "Server error: Map check: HTTP 500", 1),
+    (ApiError("Map check: server error (HTTP 500)", 500),
+     "Error: Map check: server error (HTTP 500)", 1),
+    (ApiError("Map check: HTTP 404", 404), "Server error: Map check: HTTP 404", 1),
     (requests.ConnectionError("down"),
-     "Network error: could not reach the Garmin server (down)", 1),
+     "Network error: could not reach the Garmin server (no connection)", 1),
     (KeyboardInterrupt(), "Interrupted.", 130),
 ])
 def test_cli_errors_come_after_what_was_printed(error, line, code, monkeypatch):

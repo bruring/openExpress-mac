@@ -219,8 +219,8 @@ def _check_for_updates(session):
     from openexpress.gui.app import MainWindow
 
     works = []
-    win = stand_in(session=session, _load=lambda key, text, work, done,
-                   on_error=None: works.append(work))
+    win = stand_in(session=session, progress=lambda text: None,
+                   _load=lambda key, text, work, done, on_error=None: works.append(work))
     MainWindow.load_updates(win)
     (work,) = works
     return work()

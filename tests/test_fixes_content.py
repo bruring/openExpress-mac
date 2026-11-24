@@ -179,7 +179,7 @@ def test_pending_apps_count_in_slot_check(iq_device):
     st, dev = iq_device
     dev.iq_max_apps = 2  # Store app + one pending app
     st.write("GARMIN/APPS/IN.BIN", ciq.build_in_bin([ciq.InstalledApp(FACE, 3, "", False)]))
-    other = uuid.uuid4()
+    other = uuid.UUID(int=1)
     rep = ciq.install_queued(dev, st, FakeClient(), [iq_message(1, other, "X")], known={})
     assert rep.installed == [] and rep.failed[0][0] == "X"
 
@@ -220,7 +220,7 @@ def test_free_slots_count_a_waiting_app_once():
 def test_free_slots_on_a_device_that_lists_all_its_store_apps(waiting):
     # Like a fēnix 8: 31 free slots of 32, the one taken is the store app in the list. The
     # result is what the count of listed store apps gave before.
-    pending = [uuid.uuid4() for _ in range(waiting)]
+    pending = [uuid.UUID(int=n) for n in range(1, waiting + 1)]
     state = app_list(31, [STORE_ID, PRELOADED], pending)
     assert ciq._free_slots(limit(32), state) == 32 - len(state.store_apps) == 31 - waiting
 
@@ -228,7 +228,7 @@ def test_free_slots_on_a_device_that_lists_all_its_store_apps(waiting):
 def install_with(monkeypatch, iq_device, state, names):
     st, dev = iq_device
     monkeypatch.setattr(ciq, "read_installed", lambda device, storage: state)
-    messages = [iq_message(n, uuid.uuid4(), name) for n, name in enumerate(names, 1)]
+    messages = [iq_message(n, uuid.UUID(int=n), name) for n, name in enumerate(names, 1)]
     return ciq.install_queued(dev, st, FakeClient(), messages, known={})
 
 
@@ -264,7 +264,7 @@ class FailingAckClient(FakeClient):
 
 def test_install_queued_acks_after_in_bin_and_reports_ack_failure(iq_device):
     st, dev = iq_device
-    a, b = uuid.uuid4(), uuid.uuid4()
+    a, b = uuid.UUID(int=1), uuid.UUID(int=2)
     client = FailingAckClient()
     rep = ciq.install_queued(dev, st, client, [iq_message(1, a, "A"), iq_message(2, b, "B")],
                              known={})
@@ -276,7 +276,7 @@ def test_install_queued_acks_after_in_bin_and_reports_ack_failure(iq_device):
 
 def test_install_queued_registers_written_apps_on_crash(iq_device):
     st, dev = iq_device
-    a = uuid.uuid4()
+    a = uuid.UUID(int=1)
 
     class Crash(FakeClient):
         def download_message(self, url, absolute):
@@ -285,7 +285,7 @@ def test_install_queued_registers_written_apps_on_crash(iq_device):
             return b"PRG-DATA"
 
     client = Crash()
-    msgs = [iq_message(1, a, "A"), iq_message(2, uuid.uuid4(), "B")]
+    msgs = [iq_message(1, a, "A"), iq_message(2, uuid.UUID(int=2), "B")]
     msgs[1]["metadata"]["messageurl"] = "boom"
     with pytest.raises(ciq.ApiError):
         ciq.install_queued(dev, st, client, msgs, known={})
@@ -315,13 +315,14 @@ def test_install_queued_total_space(iq_device):
     (st.root / "GARMIN/APPS/OUT.BIN").write_bytes(proto.enc_bytes(3, proto.enc_bytes(2, resp)))
     assert ciq.read_installed(dev, st).available_space == 12
     rep = ciq.install_queued(dev, st, FakeClient(),
-                             [iq_message(1, uuid.uuid4(), "A"), iq_message(2, uuid.uuid4(), "B")],
+                             [iq_message(1, uuid.UUID(int=1), "A"),
+                              iq_message(2, uuid.UUID(int=2), "B")],
                              known={})
     assert rep.installed == ["A"] and [n for n, _e in rep.failed] == ["B"]
 
 
 def test_malformed_ciq_files():
-    good = uuid.uuid4()
+    good = uuid.UUID(int=1)
     bad_entries = (
         proto.enc_bytes(1, proto.enc_varint(1, 5))  # id as varint
         + proto.enc_bytes(1, proto.enc_bytes(1, b"short"))

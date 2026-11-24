@@ -1,0 +1,2655 @@
+{
+ "maps": [
+  {
+   "release": {
+    "productgroupname": "BaseMap Worldwide DEM",
+    "majorversion": 9,
+    "minorversion": 0
+   },
+   "displayname": "Base maps",
+   "maptype": "Base maps",
+   "filestoremove": [
+    {
+     "filename": "Garmin/gmapbmap.img",
+     "sizeinbytes": 53891072
+    },
+    {
+     "filename": "Garmin/SID/DA67400.sid",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "006-F0114-00",
+      "mapimagepartnumber": "006-F0114-00",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "Base maps",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/gmapbmap.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/shared/006-f0114-00/d7271f72890e8135a14da408a0b3f66d/F0114000C.img",
+         "md5": "1ycfcokOgTWhTaQIoLP2bQ==",
+         "sizeinbytes": 53891072
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA67400.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da674-00/06264e133f82af350f39959378b2413e/da67400.sid",
+         "md5": "BiZOEz+CrzUPOZWTeLJBPg==",
+         "sizeinbytes": 65065
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": false,
+   "eulaurls": [],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": null
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive North America",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Canada",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/D9953060A.img",
+     "sizeinbytes": 2864971776
+    },
+    {
+     "filename": "Garmin/D4712100A.img",
+     "sizeinbytes": 3376939008
+    },
+    {
+     "filename": "Garmin/SID/D9958050A.sid",
+     "sizeinbytes": 30076298
+    },
+    {
+     "filename": "Garmin/SID/D9959050A.sid",
+     "sizeinbytes": 14536821
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/D9953060A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAUS-20",
+      "mapimagepartnumber": "006-D9953-06",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Canada",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9953060A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/img/006-d9953-06/rev_0a/D9953060A.img",
+         "md5": "1IviJ99EQePFeRrQq/NWBw==",
+         "sizeinbytes": 2864971776
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4712100A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4712-10/rev_0a/D4712100A.img",
+         "md5": "gpxAW9tsn8GHp3qM3ogN/w==",
+         "sizeinbytes": 3376939008
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9958050A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9958-05/rev_0a/D9958050A.sid",
+         "md5": "lyfUvH2a90ML0XVR+XKicA==",
+         "sizeinbytes": 30076298
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9959050A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9959-05/rev_0a/D9959050A.sid",
+         "md5": "jQOvzhPMpeoEu72I55o4JA==",
+         "sizeinbytes": 14536821
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "North America"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Europe",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Central Europe",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/D9486080A.img",
+     "sizeinbytes": 3457482752
+    },
+    {
+     "filename": "Garmin/SID/D9497080A.sid",
+     "sizeinbytes": 186154002
+    },
+    {
+     "filename": "Garmin/SID/D9498080A.sid",
+     "sizeinbytes": 66905787
+    },
+    {
+     "filename": "Garmin/D4713110A.img",
+     "sizeinbytes": 1290174464
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/D9486080A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-RTEU-15",
+      "mapimagepartnumber": "006-D9486-08",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Central Europe",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9486080A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/img/006-d9486-08/rev_0a/D9486080A.img",
+         "md5": "0+1TxApnFRiz3bife7AQkg==",
+         "sizeinbytes": 3457482752
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4713110A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4713-11/rev_0a/D4713110A.img",
+         "md5": "jv5ZMoJBiiGImaJNcSbBGw==",
+         "sizeinbytes": 1290174464
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9497080A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9497-08/rev_0a/D9497080A.sid",
+         "md5": "eLk05ZZc8vSbzdZ6ZIgvIg==",
+         "sizeinbytes": 186154002
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9498080A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9498-08/rev_0a/D9498080A.sid",
+         "md5": "GmnBoKSZf7UG2gt04/pCoQ==",
+         "sizeinbytes": 66905787
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Europe"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Europe",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Eastern Europe",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/D6184190A.img",
+     "sizeinbytes": 3402039296
+    },
+    {
+     "filename": "Garmin/SID/D8433110A.sid",
+     "sizeinbytes": 139740208
+    },
+    {
+     "filename": "Garmin/D4713110A.img",
+     "sizeinbytes": 1290174464
+    },
+    {
+     "filename": "Garmin/SID/D8456120A.sid",
+     "sizeinbytes": 50181446
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/D6184190A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-RTEU-15",
+      "mapimagepartnumber": "006-D6184-19",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Eastern Europe",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D6184190A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/img/006-d6184-19/rev_0a/D6184190A.img",
+         "md5": "WpLTDAEGhErwAH+4aC5HLw==",
+         "sizeinbytes": 3402039296
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4713110A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4713-11/rev_0a/D4713110A.img",
+         "md5": "jv5ZMoJBiiGImaJNcSbBGw==",
+         "sizeinbytes": 1290174464
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8433110A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8433-11/rev_0a/D8433110A.sid",
+         "md5": "H1p6/1beVetbQWiqNn9yaw==",
+         "sizeinbytes": 139740208
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8456120A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8456-12/rev_0a/D8456120A.sid",
+         "md5": "qF/KK8Y5XIlmhNTVdYHOgw==",
+         "sizeinbytes": 50181446
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Europe"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive North America",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive United States East",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/DC309010A.img",
+     "sizeinbytes": 3242000384
+    },
+    {
+     "filename": "Garmin/SID/D8301120A.sid",
+     "sizeinbytes": 28602807
+    },
+    {
+     "filename": "Garmin/D4712100A.img",
+     "sizeinbytes": 3376939008
+    },
+    {
+     "filename": "Garmin/SID/D8300120A.sid",
+     "sizeinbytes": 108588772
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/DC309010A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAUS-20",
+      "mapimagepartnumber": "006-DC309-01",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive United States East",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DC309010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/img/006-dc309-01/rev_0a/DC309010A.img",
+         "md5": "c3bylwF47EVLjYXjijYj5A==",
+         "sizeinbytes": 3242000384
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4712100A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4712-10/rev_0a/D4712100A.img",
+         "md5": "gpxAW9tsn8GHp3qM3ogN/w==",
+         "sizeinbytes": 3376939008
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8300120A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8300-12/rev_0a/D8300120A.sid",
+         "md5": "HK2SzRf0jmPp/KwdWEIt2g==",
+         "sizeinbytes": 108588772
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8301120A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8301-12/rev_0a/D8301120A.sid",
+         "md5": "mpyxZ3Gc0wQwIzaVEmvrHQ==",
+         "sizeinbytes": 28602807
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "North America"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive North America",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive United States West",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/DB961020A.img",
+     "sizeinbytes": 1855815680
+    },
+    {
+     "filename": "Garmin/D4712100A.img",
+     "sizeinbytes": 3376939008
+    },
+    {
+     "filename": "Garmin/SID/DB967010A.sid",
+     "sizeinbytes": 13503850
+    },
+    {
+     "filename": "Garmin/SID/DB966010A.sid",
+     "sizeinbytes": 42395835
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/DB961020A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAUS-20",
+      "mapimagepartnumber": "006-DB961-02",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive United States West",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DB961020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/img/006-db961-02/rev_0a/DB961020A.img",
+         "md5": "lqatKwt69nONG0Qctugupg==",
+         "sizeinbytes": 1855815680
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4712100A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4712-10/rev_0a/D4712100A.img",
+         "md5": "gpxAW9tsn8GHp3qM3ogN/w==",
+         "sizeinbytes": 3376939008
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DB966010A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-db966-01/rev_0a/DB966010A.sid",
+         "md5": "FR0NIRPe8SCghEBd2NCohw==",
+         "sizeinbytes": 42395835
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DB967010A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-db967-01/rev_0a/DB967010A.sid",
+         "md5": "gGcMIdAG29J8tBcm/bdcNQ==",
+         "sizeinbytes": 13503850
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "North America"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Europe",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Western Europe",
+   "maptype": "TopoActive",
+   "filestoremove": [
+    {
+     "filename": "Garmin/D6185190A.img",
+     "sizeinbytes": 3426615296
+    },
+    {
+     "filename": "Garmin/D4713110A.img",
+     "sizeinbytes": 1290174464
+    },
+    {
+     "filename": "Garmin/SID/D8457120A.sid",
+     "sizeinbytes": 56312112
+    },
+    {
+     "filename": "Garmin/SID/D8434110A.sid",
+     "sizeinbytes": 207755042
+    },
+    {
+     "filename": "Garmin/SID/DA69900.sid",
+     "sizeinbytes": 1735829
+    },
+    {
+     "filename": "Garmin/D6185190A.gma",
+     "sizeinbytes": 0
+    }
+   ],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-RTEU-15",
+      "mapimagepartnumber": "006-D6185-19",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Western Europe",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D6185190A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/img/006-d6185-19/rev_0a/D6185190A.img",
+         "md5": "ROnudt4FWB0Rk1qahW1czw==",
+         "sizeinbytes": 3426615296
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4713110A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4713-11/rev_0a/D4713110A.img",
+         "md5": "jv5ZMoJBiiGImaJNcSbBGw==",
+         "sizeinbytes": 1290174464
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8434110A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8434-11/rev_0a/D8434110A.sid",
+         "md5": "GtCuiE/FucYWoNcAVwQGhg==",
+         "sizeinbytes": 207755042
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8457120A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeeu/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8457-12/rev_0a/D8457120A.sid",
+         "md5": "Q2kZyhl2UpmBgy9RtnC7BQ==",
+         "sizeinbytes": 56312112
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": true,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 1,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Europe"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Antarctica",
+    "majorversion": 2023,
+    "minorversion": 0
+   },
+   "displayname": "TopoActive Antarctica",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAANT-1",
+      "mapimagepartnumber": "006-DA336-00",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Antarctica",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA336000A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/taant/2023_0/00000000-0000-4000-8000-000000000000/img/006-da336-00/rev_0a/DA336000A.img",
+         "md5": "pMqjKMm/1WR4ntoScjiBZA==",
+         "sizeinbytes": 222961664
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA340000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/taant/2023_0/00000000-0000-4000-8000-000000000000/additions/006-da340-00/rev_0a/DA340000A.sid",
+         "md5": "qxmhr9RgyEMt6xC5lCVC7g==",
+         "sizeinbytes": 58404
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA341000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/taant/2023_0/00000000-0000-4000-8000-000000000000/additions/006-da341-00/rev_0a/DA341000A.sid",
+         "md5": "b53OOzcshenmN3N0EIvpDA==",
+         "sizeinbytes": 28219
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/DA439000A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/taant/2023_0/00000000-0000-4000-8000-000000000000/additions/006-da439-00/rev_0a/DA439000A.img",
+         "md5": "SwABtdVq6PERyFnw9Y0ZUA==",
+         "sizeinbytes": 723058688
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Antarctica"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Australia & Oceania",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Australia & Oceania",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAAU-19",
+      "mapimagepartnumber": "006-D7250-18",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Australia & Oceania",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D7250180A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeausnz/2026_11/00000000-0000-4000-8000-000000000000/img/006-d7250-18/rev_0a/D7250180A.img",
+         "md5": "uELfSJMYPhTueRaj6HoFQA==",
+         "sizeinbytes": 1270775808
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D6443050A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeausnz/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d6443-05/rev_0a/D6443050A.img",
+         "md5": "kWr6gl/XeEt4PGYdSkjhRg==",
+         "sizeinbytes": 1132363776
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8298100A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeausnz/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8298-10/rev_0a/D8298100A.sid",
+         "md5": "QqcvY3clmYy1466Lszcefg==",
+         "sizeinbytes": 28018177
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8299100A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeausnz/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8299-10/rev_0a/D8299100A.sid",
+         "md5": "YBeZKmfZ9Xvs5K/i1dbRFw==",
+         "sizeinbytes": 9404085
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Australia & New Zealand"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Greenland",
+    "majorversion": 2023,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Greenland",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAGRN-1",
+      "mapimagepartnumber": "006-DA257-00",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Greenland",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA257000A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activegreenland/2023_10/00000000-0000-4000-8000-000000000000/img/006-da257-00/rev_0a/DA257000A.img",
+         "md5": "L7pvH1rwWKkwPGb/e4iXrw==",
+         "sizeinbytes": 563609600
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Greenland"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "HKMC Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Hong Kong & Macao",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAHM-5",
+      "mapimagepartnumber": "006-D9220-04",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Hong Kong & Macao",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9220040B.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/hkmctopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-d9220-04/rev_0a/D9220040B.img",
+         "md5": "FxobHQ5SbAB/xJL+YUz8Mw==",
+         "sizeinbytes": 23674880
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9226010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/hkmctopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9226-01/rev_0a/D9226010A.img",
+         "md5": "4qHRQTwwkIpSirSSkxR2tg==",
+         "sizeinbytes": 274432
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA667020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/hkmctopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da667-02/rev_0a/DA667020B.sid",
+         "md5": "eHckAIXD9Laycl6hlMyeMg==",
+         "sizeinbytes": 2963747
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC297000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/hkmctopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc297-00/rev_0a/DC297000A.sid",
+         "md5": "IOHl7DtA2p7Q97GJNduSBQ==",
+         "sizeinbytes": 1185205
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Hong Kong"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "Japan Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Japan",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAJP2-1",
+      "mapimagepartnumber": "006-DA681-02",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Japan",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA681020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/jpntopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-da681-02/rev_0a/DA681020A.img",
+         "md5": "+BCFsVJIlbZIbVPC8EBMGQ==",
+         "sizeinbytes": 941408256
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA673020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/jpntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da673-02/rev_0a/DA673020B.sid",
+         "md5": "jlD/NatfrNEkOSjt2FH4sA==",
+         "sizeinbytes": 69393089
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/DA682010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/jpntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da682-01/rev_0a/DA682010A.img",
+         "md5": "PPt6911YisMI7+blIUXkAA==",
+         "sizeinbytes": 86751232
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC296000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/jpntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc296-00/rev_0a/DC296000A.sid",
+         "md5": "eIMkRA5P4a4uXnGawZU7yw==",
+         "sizeinbytes": 48364549
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Japan"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "Koren Local Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Korea",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAKR2-2",
+      "mapimagepartnumber": "006-DA898-01",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Korea",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA898010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/krltopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-da898-01/rev_0a/DA898010A.img",
+         "md5": "C0V4sPcuQUjSojKEGaQvHg==",
+         "sizeinbytes": 228155392
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9223010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/krltopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9223-01/rev_0a/D9223010A.img",
+         "md5": "am8YSCwPF+QU46oPLFsLXg==",
+         "sizeinbytes": 27355136
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DB007010B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/krltopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-db007-01/rev_0a/DB007010B.sid",
+         "md5": "9JMvsH2BiOz1NVBCxdNw3Q==",
+         "sizeinbytes": 22080603
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC280000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/krltopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc280-00/rev_0a/DC280000A.sid",
+         "md5": "qH7sUIRMk/4SBIcNNEtf7g==",
+         "sizeinbytes": 12544212
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Korea"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive North America",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Middle America",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAUS-20",
+      "mapimagepartnumber": "006-D7753-13",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Middle America",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D7753130A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/img/006-d7753-13/rev_0a/D7753130A.img",
+         "md5": "AAsm3ewnueUEcjCttH8QUA==",
+         "sizeinbytes": 1079312384
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D4712100A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d4712-10/rev_0a/D4712100A.img",
+         "md5": "gpxAW9tsn8GHp3qM3ogN/w==",
+         "sizeinbytes": 3376939008
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8302110A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8302-11/rev_0a/D8302110A.sid",
+         "md5": "gvzwPoGo7uW0ZUgjs3mugA==",
+         "sizeinbytes": 28797897
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8303110A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeus/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8303-11/rev_0a/D8303110A.sid",
+         "md5": "0dScTZ8NnwPJ/ysAcSQp+A==",
+         "sizeinbytes": 9594350
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "North America"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Middle East & Central Asia",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive Middle East & Central Asia",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAME-6",
+      "mapimagepartnumber": "006-DA100-04",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Middle East & Central Asia",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA100040A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activemena/2026_11/00000000-0000-4000-8000-000000000000/img/006-da100-04/rev_0a/DA100040A.img",
+         "md5": "ti9LHhjzqidpueCpAqJrTA==",
+         "sizeinbytes": 1687814144
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA124040A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activemena/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da124-04/rev_0a/DA124040A.sid",
+         "md5": "T841mfopbFwarlEPcFUREQ==",
+         "sizeinbytes": 32067508
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA125040A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activemena/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da125-04/rev_0a/DA125040A.sid",
+         "md5": "WVdghhiLPVpQzawC3qukqg==",
+         "sizeinbytes": 13937624
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Middle East"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "MMLAKH Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive MMLAKH",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAMSA-3",
+      "mapimagepartnumber": "006-DA597-02",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive MMLAKH",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA597020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mmlakhtopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-da597-02/rev_0a/DA597020A.img",
+         "md5": "BHHQ5G1TsvckjHpOYsU97A==",
+         "sizeinbytes": 546783232
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/DA599010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mmlakhtopoactive/2025_30/00000000-0000-4000-8000-000000000000/additions/006-da599-01/rev_0a/DA599010A.img",
+         "md5": "ApySEIsl6m0jzzXFPzTWtQ==",
+         "sizeinbytes": 187510784
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA672020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mmlakhtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da672-02/rev_0a/DA672020B.sid",
+         "md5": "O1xGJXi3g7Zhp5NPqpIluw==",
+         "sizeinbytes": 4572582
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC298000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mmlakhtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc298-00/rev_0a/DC298000A.sid",
+         "md5": "VyGwAoDjLbDVRfrf0ZmXvw==",
+         "sizeinbytes": 924799
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Myanmar, Laos, Cambodia"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "Mongolia Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Mongolia",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAMM-3",
+      "mapimagepartnumber": "006-DA591-02",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Mongolia",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA591020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mntopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-da591-02/rev_0a/DA591020A.img",
+         "md5": "5LMmKQMUBhgJZHFzqLnRWQ==",
+         "sizeinbytes": 315113472
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/DA593010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mntopoactive/2025_30/00000000-0000-4000-8000-000000000000/additions/006-da593-01/rev_0a/DA593010A.img",
+         "md5": "EntzhQY8Kn7behzVwPAe8Q==",
+         "sizeinbytes": 258211840
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA670020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da670-02/rev_0a/DA670020B.sid",
+         "md5": "Ve0gwTtba4Q4LVg5TNr/ww==",
+         "sizeinbytes": 1006945
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC300000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/mntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc300-00/rev_0a/DC300000A.sid",
+         "md5": "YII32MGQgY1L6e/fy7/8Zg==",
+         "sizeinbytes": 199231
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Mongolia"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Africa",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive North Africa",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAAFN-10",
+      "mapimagepartnumber": "006-D5844-11",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive North Africa",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D5844110A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/img/006-d5844-11/rev_0a/D5844110A.img",
+         "md5": "+s+UN3v04VUiKhvpnNXp0g==",
+         "sizeinbytes": 3430416384
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8432060A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8432-06/rev_0a/D8432060A.sid",
+         "md5": "YM+BceXi81AoLps8aThgew==",
+         "sizeinbytes": 28481460
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8455070A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d8455-07/rev_0a/D8455070A.sid",
+         "md5": "NodOVNc14erJPEEl1KZBPA==",
+         "sizeinbytes": 9941231
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Africa"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "China Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive North China ML",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TACN-6",
+      "mapimagepartnumber": "006-D9214-05",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive North China ML",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9214050A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-d9214-05/rev_0a/D9214050A.img",
+         "md5": "rhxUCOvVUKZk47IbBuWFvw==",
+         "sizeinbytes": 2088435712
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9222010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9222-01/rev_0a/D9222010A.img",
+         "md5": "fryG0l+RT4xIkUz+0Yo2eA==",
+         "sizeinbytes": 1696301056
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA666020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da666-02/rev_0a/DA666020B.sid",
+         "md5": "EjXa0KnuTDJMOMfZ2QIn0Q==",
+         "sizeinbytes": 23647864
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC292000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc292-00/rev_0a/DC292000A.sid",
+         "md5": "QrvWn4NHtfS4lYTgCXn+4w==",
+         "sizeinbytes": 11133709
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "China Mainland"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "SGMYVNPH Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive SGMYVNPH",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TASEA-6",
+      "mapimagepartnumber": "006-D9218-05",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive SGMYVNPH",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9218050A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/sgmyvnphtopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-d9218-05/rev_0a/D9218050A.img",
+         "md5": "buvIhlK99Xm8xu3Bgsu+0Q==",
+         "sizeinbytes": 990724096
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9225020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/sgmyvnphtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9225-02/rev_0a/D9225020A.img",
+         "md5": "mvZX6gGL3GxWe6BqIIsm7w==",
+         "sizeinbytes": 216363008
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA345020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/sgmyvnphtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da345-02/rev_0a/DA345020B.sid",
+         "md5": "VDh9AXO9aCs8pTzrGFr1SA==",
+         "sizeinbytes": 32618435
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC294000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/sgmyvnphtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc294-00/rev_0a/DC294000A.sid",
+         "md5": "6uwl9FIqF2oArVURPUtkEQ==",
+         "sizeinbytes": 8160876
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Singapore/Malaysia/Vietnam/Philippines"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive Africa",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive South Africa",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAAFN-10",
+      "mapimagepartnumber": "006-D7174-09",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive South Africa",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D7174090A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/img/006-d7174-09/rev_0a/D7174090A.img",
+         "md5": "C5GQu0q99q/bx+Jtj7FyKw==",
+         "sizeinbytes": 2609840128
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9533050A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9533-05/rev_0a/D9533050A.sid",
+         "md5": "IWJYXPhgKN5miz+w+coLoA==",
+         "sizeinbytes": 22093843
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D9534050A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activeaf/2026_11/00000000-0000-4000-8000-000000000000/additions/006-d9534-05/rev_0a/D9534050A.sid",
+         "md5": "DgijTsS0afz3VB318rcVOA==",
+         "sizeinbytes": 7847558
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Africa"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "TopoActive South America",
+    "majorversion": 2026,
+    "minorversion": 11
+   },
+   "displayname": "TopoActive South America",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TAAS-13",
+      "mapimagepartnumber": "006-D7754-12",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive South America",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D7754120A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activesa/2026_11/00000000-0000-4000-8000-000000000000/img/006-d7754-12/rev_0a/D7754120A.img",
+         "md5": "YdKEe4ZxeypIX7Q3735UkA==",
+         "sizeinbytes": 3947036672
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SQL/D7729090A.db",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/nzaunav/2028_10/00000000-0000-4000-8000-000000000000/additions/006-d7729-09/rev_0a/D7729090A.db",
+         "md5": "kauo0vKV5QCKy4W471UaVg==",
+         "sizeinbytes": 40820736
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D7784040A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activesa/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d7784-04/rev_0a/D7784040A.img",
+         "md5": "SxPl3phrjKJM6KLe1zBUbg==",
+         "sizeinbytes": 2516647936
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8530080A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activesa/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d8530-08/rev_0a/D8530080A.sid",
+         "md5": "IQtUhCT/gVdvK8SYUx36Hw==",
+         "sizeinbytes": 84166743
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/D8531080A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/activesa/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d8531-08/rev_0a/D8531080A.sid",
+         "md5": "YgbsY35Po6QNWqxWPLgPyA==",
+         "sizeinbytes": 34975714
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "South America"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "South Asia Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive South Asia",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TASA-2",
+      "mapimagepartnumber": "006-DA594-01",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive South Asia",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DA594010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/satopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-da594-01/rev_0a/DA594010A.img",
+         "md5": "OEoatwFPeDyvbgfZEjWxgA==",
+         "sizeinbytes": 1663270912
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/DA596010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/satopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da596-01/rev_0a/DA596010A.img",
+         "md5": "ZdonN7zL4/deOKUGmYnSWg==",
+         "sizeinbytes": 476741632
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA671010B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/satopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da671-01/rev_0a/DA671010B.sid",
+         "md5": "is07tOGVsfuOMtZkjCJQWQ==",
+         "sizeinbytes": 44400393
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC299000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/satopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc299-00/rev_0a/DC299000A.sid",
+         "md5": "OFqYBHFW72o8KpN5AEnfFg==",
+         "sizeinbytes": 5398440
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "South Asia"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "China Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive South China ML",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TACN-6",
+      "mapimagepartnumber": "006-DB795-00",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive South China ML",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/DB795000A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-db795-00/rev_0a/DB795000A.img",
+         "md5": "aQPX3YKDtBhmps/2NPQQdg==",
+         "sizeinbytes": 2604335104
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9222010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9222-01/rev_0a/D9222010A.img",
+         "md5": "fryG0l+RT4xIkUz+0Yo2eA==",
+         "sizeinbytes": 1696301056
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DB797000B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-db797-00/rev_0a/DB797000B.sid",
+         "md5": "jbuow6k7uMggYMsMxJEfnA==",
+         "sizeinbytes": 34859530
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC293000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/cntopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc293-00/rev_0a/DC293000A.sid",
+         "md5": "rjgYjVNQaPcPS9IDqqKC/g==",
+         "sizeinbytes": 19522354
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "China Mainland"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "Taiwan Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive Taiwan",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TATW-6",
+      "mapimagepartnumber": "006-D9213-05",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive Taiwan",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9213050A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/twtopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-d9213-05/rev_0a/D9213050A.img",
+         "md5": "uL4oKSlLwMPTrE/nzucp3Q==",
+         "sizeinbytes": 112267264
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9221010A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/twtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9221-01/rev_0a/D9221010A.img",
+         "md5": "oJ/h5gyF7O0hNHQoHDGwAA==",
+         "sizeinbytes": 7700480
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA669020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/twtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da669-02/rev_0a/DA669020B.sid",
+         "md5": "WgJ7QIuQPUIa5SLaOQG9aQ==",
+         "sizeinbytes": 13205028
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC290000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/twtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc290-00/rev_0a/DC290000A.sid",
+         "md5": "lTtPYH1MQBNC4gg/IjyTJg==",
+         "sizeinbytes": 8245795
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Taiwan"
+   }
+  },
+  {
+   "release": {
+    "productgroupname": "THID Topo Active",
+    "majorversion": 2026,
+    "minorversion": 10
+   },
+   "displayname": "TopoActive THID",
+   "maptype": "TopoActive",
+   "filestoremove": [],
+   "installoptions": [
+    {
+     "identifier": {
+      "regionpartnumber": "REC-TATI-6",
+      "mapimagepartnumber": "006-D9217-05",
+      "activationrequestcode": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+     },
+     "displayname": "TopoActive THID",
+     "ispreferred": true,
+     "files": [
+      {
+       "filename": "Garmin/D9217050A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/thidtopoactive/2026_10/00000000-0000-4000-8000-000000000000/img/006-d9217-05/rev_0a/D9217050A.img",
+         "md5": "UvIY96AsDK0Na8ffH0r7zw==",
+         "sizeinbytes": 1301413888
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/D9224020A.img",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/thidtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-d9224-02/rev_0a/D9224020A.img",
+         "md5": "KaUUHJa3byAXWDp19TszUA==",
+         "sizeinbytes": 439959552
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA344020B.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/thidtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-da344-02/rev_0a/DA344020B.sid",
+         "md5": "h+U/+rdwYz3r+J0VoLHfbw==",
+         "sizeinbytes": 27237931
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DC295000A.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "rmu/thidtopoactive/2026_10/00000000-0000-4000-8000-000000000000/additions/006-dc295-00/rev_0a/DC295000A.sid",
+         "md5": "0urCPlijnQMup8cyqz13Lw==",
+         "sizeinbytes": 7968201
+        }
+       ]
+      },
+      {
+       "filename": "Garmin/SID/DA69900.sid",
+       "deliverableoptions": [
+        {
+         "type": 1,
+         "url": "https://download.garmin.com/rmu/_oob/006-da699-00/b656e01c7bddf3a5a04d56c0c49d7c4d/da69900.sid",
+         "md5": "tlbgHHvd86WgTVbAxJ18TQ==",
+         "sizeinbytes": 1735829
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "isreinstall": false,
+   "canuninstall": true,
+   "eulaurls": [
+    "https://download.garmin.com/rmu_eulas/006-h0061-45/0e/english/osm_english.txt"
+   ],
+   "downloadhosts": {
+    "backgroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "foregroundprimaryhost": "https://omtmapupdate.garmin.com/",
+    "failoverhosts": [
+     "http://omtmapupdate.garmin.com/"
+    ]
+   },
+   "installationstate": 0,
+   "restriction": null,
+   "geographicregion": {
+    "title": "Indonesia, Thailand"
+   }
+  }
+ ],
+ "filestoremove": [],
+ "directoriestoremove": [
+  {
+   "description": "UpdateDB",
+   "path": "Garmin/UpdateManager/database",
+   "externalpath": "",
+   "filematch": "*.*"
+  },
+  {
+   "description": "UpdateTempFiles",
+   "path": "Garmin/UpdateManager/downloads",
+   "externalpath": "",
+   "filematch": "*.*"
+  }
+ ]
+}

@@ -32,6 +32,17 @@
   openExpress uses for everything else; that storage is not supported yet
   ([Devices](devices.md#mtp)). A debug log (`openexpress -v`, see [Log file](#log-file)) from
   opening the device helps add support for it.
+- **"Cannot create directory GARMIN/PROMPTS" (or ASR, KBD, ExtData).** A watch such as the
+  fēnix 8 keeps voice prompts, speech and keyboard models and fonts in folders hidden from the
+  file manager. This error comes from an openExpress that wrote there through gvfs: update
+  openExpress, which writes these files over a direct USB connection, and click
+  **Install All** again. In the Flatpak this needs its USB permission
+  ([Flatpak permissions](privacy.md#flatpak-permissions)).
+- **"This user has no access to the device on USB."** The device is connected, but the user
+  running openExpress may not open it, for example when openExpress runs over SSH or as another
+  user than the one at the computer's screen; then gvfs cannot offer it either. Run openExpress
+  as the user logged in at this computer's screen, or give this user access to the device with a
+  udev rule. The command line and the log name the device's USB node.
 - **Garmin Connect shows a heat or altitude acclimation you did not expect.** With two
   devices on the account (for example a watch and an Edge), each keeps its own acclimation, and
   the daily values in Garmin Connect come from the device that reported last. Compare the

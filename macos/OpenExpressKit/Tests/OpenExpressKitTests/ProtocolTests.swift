@@ -102,6 +102,35 @@ struct ProtocolTests {
         #expect(m.updatable.map(\.name) == ["Ski"])
         #expect(m.maps.last?.status == .unknown)
         #expect(m.ownMaps.map(\.name) == ["contours.img"])   // no title: the file's name
+        #expect(m.storages.isEmpty && m.card == nil)   // an engine from before the memory card
+    }
+
+    /// A handheld with a memory card (GPSMAP H1i Plus): both storages, and where each map is.
+    @Test func mapsOnTheMemoryCard() throws {
+        let m = try JSONValue(["maps": [["name": "TopoActive Canada", "size": 1, "installed": true, "status": "up to date",
+                                         "location": "internal", "can_remove": true],
+                                        ["name": "TopoActive Taiwan", "size": 1, "installed": true, "status": "update",
+                                         "location": "card", "can_install": false, "can_remove": false],
+                                        ["name": "TopoActive Japan", "size": 1, "installed": false, "status": "available",
+                                         "location": nil],
+                                        ["name": "Odd", "size": 1, "installed": true, "status": "up to date",
+                                         "location": "somewhere"],
+                                        ["name": "TopoActive Greenland", "size": 1, "installed": true,
+                                         "status": "up to date", "location": "card_out", "can_install": false]],
+                               "storages": [["id": "internal", "name": "Internal Storage", "free": 35, "capacity": 61,
+                                             "removable": false],
+                                            ["id": "card", "name": "Memory Card", "free": 32, "capacity": 128,
+                                             "removable": true]],
+                               "free": 35])
+            .decode(MapsList.self)
+        #expect(m.maps.map(\.location) == [.internal, .card, nil, .unknown, .cardOut])
+        let removed: JSONValue = ["name": "TopoActive Taiwan", "size": 1, "installed": true,
+                                  "status": "up to date", "waiting": "remove", "location": nil]
+        let gone = try removed.decode(DeviceMap.self)
+        #expect(gone.isBeingRemoved && gone.location == nil)  // removed: in no storage now
+        #expect(m.card?.name == "Memory Card" && m.card?.removable == true)
+        #expect(m.card?.usedFraction == 0.75)
+        #expect(m.updatable.isEmpty)   // an update of a map on the card is not offered
     }
 
 

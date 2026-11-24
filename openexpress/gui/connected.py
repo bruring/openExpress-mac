@@ -88,15 +88,11 @@ class Connected:
         list to choose from; the devices connected stay known."""
         self.choosing = False
 
-    def found_alone(self) -> None:
-        """A detection found one device connected and opened it: no other device is known
-        (its tile comes from the session), and there is no list to choose from."""
-        self.devices = []
-        self.choosing = False
-
     def clear(self) -> None:
-        """No device open and none to choose from. What was on USB when the list was made
-        stays (it is read only while choosing)."""
+        """No device open and none to choose from, or a detection found one device connected
+        and opened it (its tile comes from the session): no other device is known, and there
+        is no list to choose from. What was on USB when the list was made stays (it is read
+        only while choosing)."""
         self.devices = []
         self.choosing = False
 

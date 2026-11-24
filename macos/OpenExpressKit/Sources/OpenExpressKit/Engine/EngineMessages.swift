@@ -167,14 +167,21 @@ public struct EngineProgress: Codable, Sendable, Hashable {
     public var done: Int64
     public var total: Int64?
     public var item: String?
+    /// "bytes" when `done` and `total` count bytes (then a speed can be told); else steps.
+    public var unit: String?
 
-    public init(request: Int, phase: String, done: Int64, total: Int64?, item: String? = nil) {
+    public init(request: Int, phase: String, done: Int64, total: Int64?, item: String? = nil,
+                unit: String? = nil) {
         self.request = request
         self.phase = phase
         self.done = done
         self.total = total
         self.item = item
+        self.unit = unit
     }
+
+    /// `done` and `total` count bytes.
+    public var inBytes: Bool { unit == "bytes" }
 
     /// The phase in words: the transfer phases are named, the method's own steps
     /// (`backup`, `sync`, `reading`, `working`) carry their words in `item`.

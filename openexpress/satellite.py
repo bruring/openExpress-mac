@@ -385,7 +385,7 @@ def _fetch(url: str, name: str, valid, http=None) -> bytes:
                 raise NotUpdated(f"{WAIT}{int(until)}")
             r.raise_for_status()
         except requests.RequestException as e:
-            log.info("satellite data: not downloaded: %s", applog.network_error_text(e))
+            log.info("satellite data: not downloaded: %s", applog.network_error_detail(e))
             raise NotUpdated(NETWORK + applog.network_error_text(e)) from e
         log.info("HTTP GET %s -> %s in %.1f s", url, r.status_code, time.monotonic() - started)
         data = r.content

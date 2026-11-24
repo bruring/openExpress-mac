@@ -6,6 +6,7 @@ address of the solar request, which names the device. All answers, devices and s
 made up."""
 
 import logging
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -98,7 +99,8 @@ def test_a_refusal_is_an_error_and_is_not_asked_again(status, clock):
     client = make_client(**{SENSORS_PATH: response(status, b"")})
     with pytest.raises(ApiError) as error:
         client.account_sensors()
-    assert str(error.value) == f"Account sensors: HTTP {status}"
+    said = f"server error (HTTP {status})" if status >= 500 else f"HTTP {status}"
+    assert str(error.value) == f"Account sensors: {said}"
     assert client.http.paths() == [SENSORS_PATH]
 
 
@@ -280,8 +282,10 @@ def test_openexpress_sensors_logs_one_line_and_no_sensor(signed_in, clock, caplo
         assert main(["sensors"]) == 0
     log = "\n".join(r.getMessage() for r in caplog.records)
     assert len([r for r in caplog.records if r.getMessage().startswith("HTTP GET")]) == 1
-    for private in ("Made-up", "80", "LOW", "HEART_RATE"):
+    for private in ("Made-up", "LOW", "HEART_RATE"):
         assert private not in log, private
+    # The battery level as a number of its own: never inside another (a process number).
+    assert not re.search(r"(?<![\d.])80(?![\d.])", log), log
 
 
 def test_openexpress_sensors_after_a_refusal_says_it_and_asks_no_more(signed_in, clock, capsys):

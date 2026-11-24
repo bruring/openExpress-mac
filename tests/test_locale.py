@@ -119,7 +119,7 @@ def test_a_locale_saved_by_an_older_version_gives_way_to_the_system(monkeypatch,
     or not."""
     system(monkeypatch, GERMAN)
     paths.write_private(settings_file(), json.dumps({
-        "environment": "production", "locale": "pl_PL", "client_guid": str(uuid.uuid4()),
+        "environment": "production", "locale": "pl_PL", "client_guid": str(uuid.UUID(int=1)),
         "ui_language": "en"}))
     with caplog.at_level(logging.INFO, logger="openexpress"):
         settings = Settings.load()

@@ -12,12 +12,12 @@ from fakes import window as stand_in
 
 FENIX, EDGE = 3000000001, 3000000002
 BODY = ("openExpress forgets what it keeps of this device on this computer: what was "
-        "uploaded from it, its last sync, its connection log, the maps of your own "
+        "uploaded from it, its last sync, its connection log, your own maps "
         "copied to it and the copies "
         "of its diagnostic files. Nothing "
         "changes on the device or on your Garmin account.\n\n"
-        "Connected again, it is a new device: its first sync asks again whether to upload "
-        "everything or new data only.")
+        "When it is connected again, it counts as a new device: its first sync asks again "
+        "whether to upload everything or new data only.")
 
 
 def remembered(unit_id=FENIX, description="fēnix 8", part="006-B4532-00"):

@@ -24,6 +24,7 @@ from openexpress.connect import (
     ApiError,
     ClockSkew,
     GarminClient,
+    NetworkError,
     NotAccountDevice,
     OwnershipError,
     OwnershipUnknown,
@@ -101,6 +102,9 @@ class DeviceSession:
     # the opening found goes to (gui/hidden_reading.note_needed), by path in lower case, and
     # whether openExpress's own session reads them now.
     hidden_wanted: dict[str, str] = field(default_factory=dict, repr=False)
+    # The folders inside folders that are seen whose files the file manager does not show
+    # (updates.session_folders), read with them, each as it is.
+    inside_wanted: dict[str, str] = field(default_factory=dict, repr=False)
     hidden_reading: bool = False
     # Its satellite data (satellite.State), read in the background once its page is shown
     # (satellite.seen); None: not for this device, or not read yet.
@@ -227,8 +231,26 @@ def make_client(settings: Settings, need_auth: bool | None = None) -> GarminClie
     return GarminClient(settings, consumer, auth)
 
 
-def open_session(device_uri: str | None = None, storage: Storage | None = None,
-                 allow_ums: bool = False, found=None) -> DeviceSession:
+def signed_in(client: GarminClient, settings: Settings,
+              ticket) -> tuple[store.ConnectAuth, Exception | None]:
+    """The sign-in's ticket (sso) exchanged for the account's token, the client signed in with
+    it, and the account's details from its profile; with the error that kept the profile from
+    being read (the token works without it), else None. Not saved: the caller tells the error
+    its own way first."""
+    token, secret = client.exchange_ticket(ticket.ticket, ticket.service)
+    auth = store.ConnectAuth(token, secret, settings.environment)
+    client.auth = auth
+    try:
+        prof = client.user_profile()
+        auth.account = {k: prof.get(k) for k in
+                        ("userprofilepk", "username", "emailaddress", "garminguid")}
+    except Exception as e:  # noqa: BLE001 - the token works without the profile
+        return auth, e
+    return auth, None
+
+
+def open_session(storage: Storage | None = None, allow_ums: bool = False,
+                 found=None) -> DeviceSession:
     """A session on the connected device: MTP alone, unless `allow_ums` (the window) also
     lets a Garmin device in mass storage mode be opened. `found`: the device chosen from
     find_all_devices, of whatever kind."""
@@ -238,8 +260,7 @@ def open_session(device_uri: str | None = None, storage: Storage | None = None,
     if storage is None:
         from openexpress import platform
 
-        storage = (open_device_or_drive() if allow_ums and device_uri is None
-                   else platform.open_device_storage(device_uri))
+        storage = open_device_or_drive() if allow_ums else platform.open_device_storage()
     device = read_device(storage, found_now=detected)
     settings = Settings.load()
     return DeviceSession(storage, device, settings, make_client(settings))
@@ -562,12 +583,13 @@ def require_account_device(client: GarminClient, unit_id: int,
                                  client.settings.environment))
             refused = NotAccountDevice(
                 _("This device is not registered to your Garmin account. To use it with "
-                  "Garmin Connect here, sign in to the account it belongs to, or add the "
-                  "device to your account: here (Add to Account in the window, openexpress "
-                  "register on the command line; experimental) or in Garmin Connect (the "
-                  "phone app, or connect.garmin.com); registering the product on garmin.com "
-                  "is not enough. If it is added already, check that the Garmin Connect app "
-                  "on your phone and openExpress are signed in to the same account."))
+                  "Garmin Connect here, sign in to the account it belongs to, or add it to "
+                  "your account. You can add it here (Add to Account in the window, "
+                  "openexpress register on the command line; experimental) or in Garmin "
+                  "Connect (the phone app or connect.garmin.com). Registering the product on "
+                  "garmin.com is not enough. If it is added already, check that the Garmin "
+                  "Connect app on your phone and openExpress are signed in to the same "
+                  "account."))
             refused.devices = devices  # the account's list all the same (the start page)
             raise refused
         verified = unit_id
@@ -1500,7 +1522,7 @@ def run_sync(
                     type(e).__name__, e, extra=applog.TOLD)  # the caller tells why
         # TRANSLATORS: under "Last Sync", in its details: the error that stopped the sync
         _keep_stopped(s, e, _("The sync stopped before the end: {error}").format(
-            error=_stop_text(e)))
+            error=applog.error_text(e)))
         raise
     save_last_sync(s.device.unit_id, summary, test_drive=s.test_drive)
     log.info("sync: end after %.1f s: %d uploaded, %d already known, %d downloaded, %d errors",
@@ -1568,12 +1590,14 @@ def upload_skipped(s: DeviceSession, error: Exception) -> str:
     named by its host) could not be reached or answered with an error. The rest of the sync
     does not need it: Garmin Connect's queue, Connect IQ and TrueUp go on."""
     host = urlsplit(s.settings.hosts["omt"]).netloc
-    if isinstance(error, requests.RequestException):
+    # The client's error for a request without an answer carries the requests error.
+    cause = error.__cause__ if isinstance(error, NetworkError) else error
+    if isinstance(cause, requests.RequestException):
         # TRANSLATORS: a sync uploaded nothing: Garmin's server that gives the upload settings
         # (its host, e.g. omt.garmin.com) could not be reached; the error in brackets
         return _("Uploads skipped: {host}, Garmin's server that says what to upload, could "
                  "not be reached ({error}).").format(
-            host=host, error=applog.network_error_text(error))
+            host=host, error=applog.network_error_text(cause))
     return _("Uploads skipped: {host}, Garmin's server that says what to upload, answered "
              "with an error ({error}).").format(host=host, error=error)
 
@@ -1638,7 +1662,7 @@ def _other_synced_after(unit_id: int, state: sync.SyncState) -> float | None:
     other = state.other.last_sync if state.other is not None else None
     if other is None:
         return None
-    own = _usable_last_sync(_read_json(device_last_sync_path(unit_id)))
+    own = _usable_last_sync(paths.read_json_object(device_last_sync_path(unit_id)))
     if own is not None and own.get("time", 0.0) >= other:
         return None
     log.info("sync: the other install of this computer synced the device after this one")
@@ -1735,14 +1759,6 @@ def apply_sync(s: DeviceSession, plan: SyncPlan,
     if not plan.test_drive:
         answers.ANSWERS.forget((answers.SENSORS, answers.SOLAR))
     return out
-
-
-def _stop_text(error: Exception) -> str:
-    """The error that stopped a sync, as the record keeps it: its words, those of a network
-    error without the address it names."""
-    if isinstance(error, requests.RequestException):
-        return applog.network_error_text(error)
-    return str(error) or type(error).__name__
 
 
 def _keep_stopped(s: DeviceSession, error: BaseException, why: str) -> None:
@@ -1867,14 +1883,6 @@ def save_last_sync(unit_id: int, summary: SyncSummary, test_drive: bool = False)
     tile_facts.note_synced(unit_id)  # for its tile
 
 
-def _read_json(path) -> dict | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))  # as written, whatever the locale
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 _LAST_SYNC_COUNTS = ("uploaded", "downloaded", "skipped_known", "rejected")
 
 
@@ -1900,21 +1908,20 @@ def _usable_last_sync(data: dict | None) -> dict | None:
     return data
 
 
-def sync_stamp(unit_id: int | None, test_drive: bool = False) -> str | None:
+def sync_stamp(unit_id: int | None) -> str | None:
     """The version of what this installation knows of the sync of a device: when its
     state.json was written and its size, and the time of its last sync recorded; with those of
     the other install's state.json, when it has one (sync.other_state_path). A count of its
     activities is shown from a record only while this is the same (known_devices.SyncCount).
-    None: never synced here (no state.json, in neither install). A test drive: its own record
-    alone (sync.records_dir)."""
+    None: never synced here (no state.json, in neither install)."""
     if not unit_id:
         return None
-    own = _file_stamp(sync.state_path(unit_id, test_drive))
-    other_path = None if test_drive else sync.other_state_path(unit_id)
+    own = _file_stamp(sync.state_path(unit_id))
+    other_path = sync.other_state_path(unit_id)
     other = _file_stamp(other_path) if other_path is not None else None
     if own is None and other is None:
         return None
-    record = load_last_sync(unit_id, test_drive)
+    record = load_last_sync(unit_id)
     when = record.get("time") if record else None
     stamp = f"{own or '-'}-{when}"
     return stamp if other is None else f"{stamp}+{other}"
@@ -1933,13 +1940,14 @@ def load_last_sync(unit_id: int | None = None, test_drive: bool = False) -> dict
     first; the shared file, which earlier versions wrote alone, counts only when it is of
     this device. A test drive standing in for it: its own file alone."""
     if unit_id is not None and test_drive:
-        data = _usable_last_sync(_read_json(device_last_sync_path(unit_id, test_drive=True)))
+        data = _usable_last_sync(
+            paths.read_json_object(device_last_sync_path(unit_id, test_drive=True)))
         return data if data is not None and data.get("unit_id") == unit_id else None
     if unit_id is not None:
-        data = _usable_last_sync(_read_json(device_last_sync_path(unit_id)))
+        data = _usable_last_sync(paths.read_json_object(device_last_sync_path(unit_id)))
         if data is not None and data.get("unit_id") == unit_id:
             return data
-    data = _usable_last_sync(_read_json(last_sync_path()))
+    data = _usable_last_sync(paths.read_json_object(last_sync_path()))
     if data is None or (unit_id is not None and data.get("unit_id") != unit_id):
         return None
     return data
@@ -2062,7 +2070,8 @@ def _install_queued_apps(s, messages, progress, errors, received: list) -> list[
     try:
         known = {a.app_id: a for a in ciq.StoreApi(s.client).account_apps(
             s.device, language_tag(s.settings.locale))}
-    except Exception:  # noqa: BLE001 - names are only cosmetic
+    except Exception as e:  # noqa: BLE001 - names are only cosmetic
+        log.info("apps: names from the store not read (%s)", type(e).__name__)
         known = {}
     try:
         rep = ciq.install_queued(s.device, s.storage, s.client, messages, known,

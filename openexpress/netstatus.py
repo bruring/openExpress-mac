@@ -17,6 +17,7 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
+from openexpress import applog
 from openexpress.i18n import N_, _, pgettext, relative_time
 
 log = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ def kind_of(status: int, skew: float = 0.0, signed: bool = True) -> str:
         if not signed:
             return OK
         return CLOCK if skew > MAX_CLOCK_SKEW_S else AUTH
-    if status >= 500:
+    if applog.is_server_error(status):
         return SERVER
     return OK  # also 404 and the like: the server answered
 
@@ -339,7 +340,7 @@ def rows(last: dict[str, Result], answered: dict[str, float], hosts: dict[str, s
         elif r.kind == SERVER:
             detail = _("server error (HTTP {status}) {at}").format(
                 status=r.status, at=at(r.at, now))
-            outcome = _("server error (HTTP {status})").format(status=r.status)
+            outcome = applog.server_error_text(r.status)
         elif r.kind == AUTH:
             detail = _("sign-in refused (HTTP {status}) {at}").format(
                 status=r.status, at=at(r.at, now))

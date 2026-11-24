@@ -521,8 +521,8 @@ def test_a_file_of_an_update_is_read_once_while_it_stays_the_same(tmp_path, cloc
     os.utime(where, (1_700_000_000, 1_700_000_000))
     st, _dev = opened(root)
     reads = []
-    real_read = st.read
-    st.read = lambda path: reads.append(path) or real_read(path)
+    real_read = st.read_at  # the file found, read whole
+    st.read_at = lambda path, told=None: reads.append(path) or real_read(path, told=told)
     u = types.SimpleNamespace(device_path="GARMIN/RemoteSW/GPS.GCD", size=4_000,
                               md5=_h.md5(b"g" * 4_000).hexdigest(), part_number="006-D0000-00")
     assert updates.presence(st, u).why == updates.MATCHES
@@ -717,8 +717,9 @@ def test_a_file_of_an_update_without_a_time_is_read_each_time(tmp_path, monkeypa
     os.utime(where, (0, 0))  # no time known
     st = LocalStorage(root)
     reads = []
-    real_read = st.read
-    monkeypatch.setattr(st, "read", lambda path: reads.append(path) or real_read(path))
+    real_read = st.read_at  # the file found, read whole
+    monkeypatch.setattr(st, "read_at",
+                        lambda path, told=None: reads.append(path) or real_read(path, told=told))
     u = types.SimpleNamespace(device_path="GARMIN/RemoteSW/GPS.GCD", size=4_000,
                               md5=hashlib.md5(b"g" * 4_000).hexdigest())
     assert updates.presence(st, u).why == updates.MATCHES

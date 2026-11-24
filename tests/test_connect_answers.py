@@ -95,3 +95,44 @@ def test_a_queue_that_is_no_object_is_an_error(body):
     client = client_answering(MESSAGES, response(body=body))
     assert error_of(lambda: client.device_messages(DEVICE_UNIT)) == (
         NOT_UNDERSTOOD.format(what="Connect file queue"), None, "")
+
+
+# --- a server's error (5xx) said as one; the other answers as they were ---------------------------
+
+
+@pytest.mark.parametrize("status", [500, 503, 526])
+def test_a_server_error_is_said_as_a_server_error(status):
+    client = client_answering(CONSENT, response(status, b"<html>made up</html>"))
+    said, code, _body = error_of(lambda: client.consent("DI_CONNECT_UPLOAD"))
+    assert said == f"Upload consent: server error (HTTP {status})" and code == status
+
+
+@pytest.mark.parametrize(("language", "words"), [
+    ("en", "Connect IQ apps: server error (HTTP 526)"),
+    ("pl", "Aplikacje Connect IQ: błąd serwera (HTTP 526)")])
+def test_the_apps_page_says_a_server_error_in_its_language(language, words):
+    """What the Apps page shows under "Something Went Wrong" (the error's words, as the
+    command line says them too)."""
+    import types
+
+    from openexpress import ciq, i18n
+
+    client = client_answering("express/appstore/rest/apps/downloads", response(526, b""))
+    device = types.SimpleNamespace(unit_id=DEVICE_UNIT, part_number="006-B0000-00")
+    i18n.setup(language)
+    try:
+        said, code, _body = error_of(lambda: ciq.StoreApi(client).account_apps(device, "en-US"))
+    finally:
+        i18n.setup("en")
+    assert said == words and code == 526
+
+
+@pytest.mark.parametrize(("status", "words"), [
+    (401, "Upload consent: the sign-in has expired (HTTP 401). Sign in again."),
+    (403, "Upload consent: the sign-in has expired (HTTP 403). Sign in again."),
+    (404, "Upload consent: HTTP 404"),
+    (429, "Upload consent: HTTP 429")])
+def test_the_other_answers_that_fail_are_said_by_their_code(status, words):
+    client = client_answering(CONSENT, response(status, b""))
+    said, code, _body = error_of(lambda: client.consent("DI_CONNECT_UPLOAD"))
+    assert said == words and code == status

@@ -13,6 +13,7 @@ openexpress/connect.py
 openexpress/course_gpx.py
 openexpress/courses.py
 openexpress/desktop.py
+openexpress/device/card.py
 openexpress/device/found.py
 openexpress/device/gio_storage.py
 openexpress/device/mac_storage.py

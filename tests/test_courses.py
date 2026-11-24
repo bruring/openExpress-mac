@@ -330,16 +330,54 @@ def test_a_failed_copy_leaves_nothing(drive, tmp_path):
 
         def _write(self, real_path, data):
             (self.root / real_path).write_bytes(data[:10])
-            raise DeviceError("made-up failure")
+            raise DeviceError(f"Cannot write {real_path}: made-up failure")
 
         def _discard_partial(self, real_path):
             (self.root / real_path).unlink(missing_ok=True)
 
     st = Breaks(drive)
     plan = courses.plan_add(device(), st, a_gpx(tmp_path))
-    with pytest.raises(CourseError, match="Writing Garmin/NewFiles/Morning_Loop.GPX failed"):
+    with pytest.raises(CourseError, match="Cannot write Garmin/NewFiles/Morning_Loop.GPX: "):
         courses.add(plan, device(), st)
     assert not (drive / plan.path).exists() and courses.recorded(UNIT) == []
+
+
+@pytest.mark.parametrize("error, said", [
+    (DeviceError("Cannot write Garmin/NewFiles/Morning_Loop.GPX: Could not send object info"),
+     "Cannot write Garmin/NewFiles/Morning_Loop.GPX: Could not send object info"),
+    (OSError(5, "Input/output error", "/run/media/made-up/Garmin/NewFiles/Morning_Loop.GPX"),
+     "Writing Garmin/NewFiles/Morning_Loop.GPX failed. (Input/output error)"),
+], ids=["device", "system"])
+def test_a_failed_copy_names_the_file_once(drive, tmp_path, error, said):
+    """The device's error names the file already; the system's is said in its words, without
+    its number and the path on this computer."""
+    class Refuses(LocalStorage):
+        def _write(self, real_path, data):
+            raise error
+
+    st = Refuses(drive)
+    plan = courses.plan_add(device(), st, a_gpx(tmp_path))
+    with pytest.raises(CourseError) as failed:
+        courses.add(plan, device(), st)
+    assert str(failed.value) == said
+
+
+@pytest.mark.parametrize("error", [
+    DeviceError("Cannot write Garmin/NewFiles/Morning_Loop.GPX: Could not send object info"),
+    OSError(5, "Input/output error"),
+], ids=["device", "system"])
+def test_a_failed_copy_is_told_once_on_the_terminal(drive, tmp_path, error, caplog):
+    """The error says it: its warning goes to the log file, not to the command line's terminal."""
+    class Refuses(LocalStorage):
+        def _write(self, real_path, data):
+            raise error
+
+    st = Refuses(drive)
+    plan = courses.plan_add(device(), st, a_gpx(tmp_path))
+    with pytest.raises(CourseError):
+        courses.add(plan, device(), st)
+    warned = [r for r in caplog.records if "the copy failed" in r.getMessage()]
+    assert len(warned) == 1 and warned[0].told
 
 
 def test_the_names_stay_out_of_the_log(drive, tmp_path, log_file):

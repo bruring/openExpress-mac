@@ -1,0 +1,146 @@
+{
+ "device": "Made-up Watch",
+ "software": "1.00",
+ "garmin_listing": "answered",
+ "hidden": [
+  {
+   "folder": ".System",
+   "xml": "does not name it"
+  },
+  {
+   "folder": "GARMIN/ASR",
+   "xml": "names folders inside"
+  },
+  {
+   "folder": "GARMIN/ASR/Updates",
+   "xml": "names the folder"
+  },
+  {
+   "folder": "GARMIN/Prompts",
+   "xml": "names the folder"
+  }
+ ],
+ "targets": {
+  ".System/Map": {
+   "made-up maps answer": 2
+  },
+  "GARMIN/PROMPTS": {
+   "made-up answer": 1
+  },
+  "Garmin/ASR/Updates": {
+   "made-up answer": 3
+  },
+  "Garmin/SID": {
+   "made-up answer": 4
+  },
+  "Garmin/NewFolder": {
+   "made-up answer": 1
+  },
+  "Garmin/SQL": {
+   "made-up answer": 2
+  }
+ },
+ "expected": {
+  ".System/Map": {
+   "maps": "refused"
+  },
+  "GARMIN/PROMPTS": {
+   "updates": "own session"
+  },
+  "Garmin/ASR/Updates": {
+   "updates": "own session"
+  },
+  "Garmin/SID": {
+   "updates": "ordinary"
+  },
+  "Garmin/NewFolder": {
+   "updates": "ordinary"
+  },
+  "Garmin/SQL": {
+   "updates": "ordinary"
+  }
+ },
+ "expected_without_session": {
+  ".System/Map": {
+   "maps": "refused"
+  },
+  "GARMIN/PROMPTS": {
+   "updates": "refused"
+  },
+  "Garmin/ASR/Updates": {
+   "updates": "refused"
+  },
+  "Garmin/SID": {
+   "updates": "ordinary"
+  },
+  "Garmin/NewFolder": {
+   "updates": "ordinary"
+  },
+  "Garmin/SQL": {
+   "updates": "ordinary"
+  }
+ },
+ "hidden_files": [
+  "GARMIN/SQL/MadeUpGrouping.db"
+ ],
+ "target_files": {
+  "Garmin/SQL/MadeUpGrouping.db": [
+   "made-up answer"
+  ],
+  "Garmin/SQL/D0000005A.db": [
+   "made-up answer"
+  ],
+  "Garmin/SID/D0000004A.sid": [
+   "made-up answer"
+  ],
+  "GARMIN/PROMPTS/made_up_bundle.hvm": [
+   "made-up answer"
+  ]
+ },
+ "expected_files": {
+  "Garmin/SQL/MadeUpGrouping.db": "ordinary",
+  "Garmin/SQL/D0000005A.db": "ordinary",
+  "Garmin/SID/D0000004A.sid": "ordinary"
+ },
+ "xml_targets": {
+  "FIT_TYPE_39": [
+   "Garmin/NewFiles"
+  ],
+  "FIT_TYPE_5": [
+   "Garmin/Workouts"
+  ],
+  "GPSData": [
+   "Garmin/NewFiles"
+  ],
+  "IQAudioContentApps": [
+   "GARMIN/ASR"
+  ],
+  "IQWatchApps": [
+   "GARMIN/APPS",
+   "GARMIN/APPS/MEDIA"
+  ],
+  "MEDIA_TRACK": [
+   "Music"
+  ]
+ },
+ "expected_xml": {
+  "GARMIN/APPS": {
+   "Connect IQ": "ordinary"
+  },
+  "GARMIN/ASR": {
+   "Connect IQ": "own session"
+  },
+  "Music": {
+   "music": "ordinary",
+   "Garmin Connect's queue": "ordinary"
+  },
+  "Garmin/NewFiles": {
+   "courses": "ordinary",
+   "TrueUp": "ordinary",
+   "Garmin Connect's queue": "ordinary"
+  },
+  "Garmin/Workouts": {
+   "Garmin Connect's queue": "ordinary"
+  }
+ }
+}

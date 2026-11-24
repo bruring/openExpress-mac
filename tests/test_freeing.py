@@ -6,6 +6,7 @@ devices, files and sizes are made up."""
 
 import hashlib
 import os
+import posixpath
 import stat
 import threading
 import types
@@ -1085,6 +1086,72 @@ def test_a_copy_of_the_same_length_but_other_bytes_keeps_its_dump(tmp_path, cloc
     assert freed.copy_failed == ["GARMIN/Debug/dump/RAM_bak2.zip"]
     assert "GARMIN/Debug/dump/RAM_bak2.zip" in on_device(st)
     assert not list(freeing.removed_folder(UNIT).rglob("RAM_bak2.zip"))
+
+
+def reads_of(st, monkeypatch, way, events, shorter=None):
+    """The made-up device read as a stream (its `read`), or, for "copy", copied whole as a
+    device over MTP copies a large file (whole_reads with a threshold of one byte); each read
+    noted in `events`. `shorter`: the path whose read gives one byte less than listed."""
+    from openexpress.device import whole_reads
+
+    real_read, real_delete = st.read, st.delete
+
+    def bytes_of(path):
+        data = real_read(path)
+        return data[:-1] if path == shorter else data
+
+    def read(path, *a, **kw):
+        events.append(("read", path))
+        return bytes_of(path)
+
+    def copy_to_local(real, dest, size, told=None):
+        events.append(("read", real))
+        dest.write_bytes(bytes_of(real))
+        return dest.stat().st_size
+
+    def delete(path, *a, **kw):
+        events.append(("delete", path))
+        return real_delete(path, *a, **kw)
+
+    monkeypatch.setattr(st, "read", read)
+    monkeypatch.setattr(st, "delete", delete)
+    if way == "copy":
+        monkeypatch.setattr(whole_reads, "COPY_FROM", 1)
+        monkeypatch.setattr(st, "copy_to_local", copy_to_local, raising=False)
+
+
+@pytest.mark.parametrize("way", ["stream", "copy"])
+def test_every_copy_is_checked_before_the_first_removal(tmp_path, clock, small_limit,
+                                                        monkeypatch, way):
+    """The dumps to copy are all read and checked before anything is removed from the
+    device, whichever way a dump is read."""
+    st, _dev = make_device(tmp_path)
+    events = []
+    reads_of(st, monkeypatch, way, events)
+    question = asked(st)
+    freed = freeing.remove_dumps(st, UNIT, question)
+    copied = {path for path, _size, _when in question.copied}
+    reads = [i for i, (kind, path) in enumerate(events) if kind == "read" and path in copied]
+    deletes = [i for i, (kind, _path) in enumerate(events) if kind == "delete"]
+    assert len(reads) == len(copied) == 2 and deletes
+    assert max(reads) < min(deletes)
+    assert len(freed.removed) == len(copied) + len(question.without_copy)
+
+
+@pytest.mark.parametrize("way", ["stream", "copy"])
+def test_a_read_shorter_than_the_listed_size_keeps_that_dump(tmp_path, clock, small_limit,
+                                                             monkeypatch, way):
+    """A dump whose read gives fewer bytes than the device lists is not removed and its copy
+    is not kept; the other older dumps go as the question said (each dump on its own)."""
+    st, _dev = make_device(tmp_path)
+    question = asked(st)
+    short = question.copied[0][0]
+    reads_of(st, monkeypatch, way, [], shorter=short)
+    freed = freeing.remove_dumps(st, UNIT, question)
+    others = [path for path, _size, _when in question.older if path != short]
+    assert short in on_device(st) and freed.copy_failed == [short]
+    assert not list(freeing.removed_folder(UNIT).rglob(posixpath.basename(short)))
+    assert not any(path in on_device(st) for path in others)
 
 
 def test_a_dump_more_than_a_day_ahead_of_this_computer_offers_nothing(clock):

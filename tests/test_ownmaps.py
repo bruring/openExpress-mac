@@ -447,12 +447,13 @@ class FailingWrite(LocalStorage):
     """The copy breaks off: half of the file is on the device, then an error."""
 
     keep_the_rest = False  # the device refuses to delete, too
+    words = "Cannot write: device gone"
 
     def _write_file(self, real_path, local, progress=None):
         self._p(real_path).write_bytes(local.read_bytes()[:1000])
         if type(self).short_only:
             return
-        raise DeviceError("Cannot write: device gone")
+        raise DeviceError(type(self).words)
 
     def _delete(self, real_path):
         if type(self).keep_the_rest:
@@ -478,8 +479,7 @@ def test_a_failed_copy_removes_its_own_incomplete_file(maps_cli, my_map, monkeyp
     assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
     captured = capsys.readouterr()
     assert captured.err.splitlines()[-1] == (
-        "Error: Writing GARMIN/osm-test.img failed; the incomplete file was removed from the "
-        f"device. ({reason})")
+        f"Error: {reason}. The incomplete file was removed from the device.")
     assert "Wrote" not in captured.out
     assert tree(maps_cli) == before and state_of(maps_cli) == []
 
@@ -496,8 +496,8 @@ def test_a_map_the_drive_keeps_with_other_bytes_is_removed_and_not_listed(maps_c
     before = tree(maps_cli)
     assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
     assert capsys.readouterr().err.splitlines()[-1] == (
-        "Error: Writing GARMIN/osm-test.img failed; the incomplete file was removed from the "
-        "device. (Write verification of GARMIN/osm-test.img failed)")
+        "Error: Write verification of GARMIN/osm-test.img failed. The incomplete file was "
+        "removed from the device.")
     assert tree(maps_cli) == before and state_of(maps_cli) == []
 
 
@@ -524,9 +524,9 @@ def test_the_check_of_a_map_on_a_drive_is_a_step_of_its_own(map_folder, my_map, 
 def test_a_failed_copy_that_cannot_be_cleaned_up_says_so(maps_cli, my_map, monkeypatch, capsys):
     failing(monkeypatch, keep_the_rest=True)
     assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
-    assert ("Error: Writing GARMIN/osm-test.img failed and the incomplete file could not be "
-            "removed; delete GARMIN/osm-test.img from the device yourself."
-            ) in capsys.readouterr().err
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        "Error: Cannot write: device gone. The incomplete file could not be removed; delete "
+        "GARMIN/osm-test.img from the device yourself.")
     assert state_of(maps_cli) == []
 
 
@@ -540,7 +540,82 @@ def test_a_copy_that_left_nothing_behind(maps_cli, my_map, monkeypatch, capsys):
     monkeypatch.setattr(cli, "LocalStorage", Nothing)
     assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
     assert capsys.readouterr().err.splitlines()[-1] == (
-        "Error: Writing GARMIN/osm-test.img failed. (Cannot write: refused)")
+        "Error: Cannot write: refused")
+
+
+WORDS_WITH_THE_PATH = "Cannot write GARMIN/osm-test.img: Input/output error"
+
+
+@pytest.mark.parametrize("keep_the_rest, last", [
+    (False, f"Error: {WORDS_WITH_THE_PATH}. The incomplete file was removed from the device."),
+    (True, (f"Error: {WORDS_WITH_THE_PATH}. The incomplete file could not be removed; delete "
+            "GARMIN/osm-test.img from the device yourself.")),
+], ids=["removed", "kept"])
+def test_the_words_of_a_failed_copy_name_the_file_themselves(maps_cli, my_map, monkeypatch,
+                                                             capsys, keep_the_rest, last):
+    """The storage's words name the file: no sentence of ours before them that names it again.
+    The path comes a second time only where it says what to delete."""
+    failing(monkeypatch, keep_the_rest=keep_the_rest)
+    monkeypatch.setattr(FailingWrite, "words", WORDS_WITH_THE_PATH)
+    assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
+    err = capsys.readouterr().err.splitlines()
+    assert err == [last]  # no warning before it on the terminal
+
+
+def test_words_with_the_file_and_nothing_left_behind_are_said_alone(maps_cli, my_map, monkeypatch,
+                                                                    capsys):
+    from openexpress import cli
+
+    class Nothing(LocalStorage):
+        def _write_file(self, real_path, local, progress=None):
+            raise DeviceError(WORDS_WITH_THE_PATH)
+
+    monkeypatch.setattr(cli, "LocalStorage", Nothing)
+    assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
+    assert capsys.readouterr().err.splitlines() == [f"Error: {WORDS_WITH_THE_PATH}"]
+
+
+@pytest.mark.parametrize("keep_the_rest, ending", [
+    (False, "Niepełny plik usunięto z\u00a0urządzenia."),
+    (True, ("Niepełnego pliku nie udało się usunąć; usuń Garmin/new.img z\u00a0urządzenia "
+            "ręcznie.")),
+], ids=["removed", "kept"])
+def test_what_became_of_the_incomplete_file_in_polish(map_folder, my_map, keep_the_rest, ending):
+    from fakes import in_language
+
+    from openexpress.maps import MapError
+
+    class Fails(FailingWrite):
+        short_only = False
+
+    Fails.keep_the_rest = keep_the_rest
+    st = Fails(map_folder)
+    dev = device()
+    dev.unit_id = 4000000001  # made up
+    plan = ownmaps.plan_add(dev, st, [], my_map, "new.img")
+    with in_language("pl"), pytest.raises(MapError) as failed:
+        ownmaps.add(plan, dev, st)
+    assert str(failed.value) == f"Cannot write: device gone. {ending}"
+
+
+def test_a_failed_copy_is_in_the_log_file(maps_cli, my_map, monkeypatch, log_file):
+    failing(monkeypatch)
+    assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
+    assert "own map: the copy failed (DeviceError)" in log_file.read_text(encoding="utf-8")
+
+
+def test_a_copy_the_system_refused_says_it_in_its_words(maps_cli, my_map, monkeypatch, capsys):
+    """Without the number of the error and the path on this computer."""
+    from openexpress import cli
+
+    class Refused(LocalStorage):
+        def _write_file(self, real_path, local, progress=None):
+            raise OSError(5, "Input/output error", "/run/media/made-up/GARMIN/osm-test.img")
+
+    monkeypatch.setattr(cli, "LocalStorage", Refused)
+    assert main(["--path", str(maps_cli), "maps", "add", str(my_map), "--apply"]) == 1
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        "Error: Writing GARMIN/osm-test.img failed. (Input/output error)")
 
 
 def test_a_file_that_appeared_meanwhile_is_not_touched(map_folder, my_map):
@@ -796,7 +871,7 @@ def test_remove_own_in_polish(added, capsys):
         i18n.setup("en")
     assert out[0] == "Usuwanie własnej mapy: Sometown cyclemap/latin1 Example.org"
     assert out[1] == "  - GARMIN/osm-test.img  (2,0 kB)"
-    assert err == ("Błąd: Plik by-hand.img nie został skopiowany przez tę instalację openExpress "
+    assert err == ("Błąd: Plik by-hand.img nie został skopiowany przez tę instalację openExpressu "
                    "(mógł zostać skopiowany ręcznie albo przez inną instalację), więc nie "
                    "zostanie usunięty. Jeśli chcesz go usunąć, zrób to w menedżerze plików.")
 
@@ -1087,7 +1162,9 @@ def test_window_reads_the_page_again_after_a_failed_copy(window_device, my_map, 
     win.add_own_map(target)
     kind, title, text = win.shown[-1]
     assert (kind, title) == ("error", "Map Not Added")
-    assert text.startswith("Writing Garmin/new-map.img failed")
+    assert text == "Cannot write Garmin/new-map.img: the device is gone. " + (
+        "The incomplete file could not be removed; delete Garmin/new-map.img from the device "
+        "yourself." if left else "The incomplete file was removed from the device.")
     assert len(win.reloads) == 1
     ((key, force, (shown, ours)),) = win.reloads
     assert (key, force, ours) == ("maps", True, [])
@@ -1652,7 +1729,7 @@ def test_foreign_maps_in_the_window_in_polish(window_device):
     assert ("broken.img", f"broken.img\u00a0· 9\u00a0B\u00a0· {unknown}", False) in rows
     asked = win.shown[-1]
     assert asked[0] == "ask" and asked[2].startswith(
-        "Tej mapy nie wgrał openExpress.\n\n")
+        "openExpress nie skopiował tej mapy na urządzenie.\n\n")
     assert "?" not in asked[2]  # one question only, in the heading
     assert asked[3:] == ("Usuń mimo to", True)
 

@@ -71,7 +71,7 @@ def edge(tmp_path):
 @pytest.fixture
 def edge_md5(monkeypatch):
     """The MD5 of a file read back from the device: the Emoji Font's, as the Edge gave it."""
-    def md5_of(storage, real, size, mtime):
+    def md5_of(storage, real, size, mtime, told=None):
         return told_md5.get(real, "0" * 32)
 
     told_md5 = {f"{EMOJI.path}/{EMOJI.filename}": EMOJI.md5}
@@ -156,9 +156,9 @@ def test_a_file_read_back_once_is_not_read_again(edge, edge_md5, monkeypatch):
     asked = []
     md5_of = updates._md5_of
 
-    def counted(storage, real, size, mtime):
+    def counted(storage, real, size, mtime, told=None):
         asked.append(real)
-        return md5_of(storage, real, size, mtime)
+        return md5_of(storage, real, size, mtime, told)
 
     monkeypatch.setattr(updates, "_md5_of", counted)
     _offered(edge, _answer(_emoji_entry()), _device(EMOJI_LISTED))

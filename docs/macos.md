@@ -138,7 +138,8 @@ OPENEXPRESS_ENGINE=mock "build/DerivedData/Build/Products/Debug/openExpress for 
 `OPENEXPRESS_ENGINE` chooses the engine:
 - a path to `openexpress`;
 - `mock`, an engine in memory with no device or network (`mock:busy`, `mock:firstRun`,
-  `mock:signedOut` and `mock:empty` show other states);
+  `mock:signedOut` and `mock:empty` show other states; `mock:handheld`, a GPSMAP H1i Plus with
+  a memory card: a map on the card and one on both storages);
 - unset: the engine inside the app (`Contents/Resources/engine/bin/openexpress`), then
   `~/.venvs/openexpress-mac/bin/openexpress`.
 

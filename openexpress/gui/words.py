@@ -66,15 +66,16 @@ def not_installed_text(u) -> str:
         if old:
             # TRANSLATORS: below an update the device has not installed although it was unplugged
             # since: {when} when it was copied, {old} the version the device still reports
-            return _("Copied {when}. The device was unplugged since, changed or refused the "
-                     "file and still reports version {old}.").format(when=when, old=old)
-        return _("Copied {when}. The device was unplugged since, changed or refused the file "
-                 "and has not installed it.").format(when=when)
+            return _("Copied {when}. Since then the device has been unplugged, has changed or "
+                     "refused the file, and still reports version {old}.").format(when=when,
+                                                                                  old=old)
+        return _("Copied {when}. Since then the device has been unplugged, has changed or "
+                 "refused the file, and has not installed it.").format(when=when)
     if old:
-        return _("Copied {when}. The device was unplugged since and still reports version "
-                 "{old}; the file is still on it, unchanged.").format(when=when, old=old)
-    return _("Copied {when}. The device was unplugged since and has not installed it; the "
-             "file is still on it, unchanged.").format(when=when)
+        return _("Copied {when}. Since then the device has been unplugged and still reports "
+                 "version {old}; the file is still on it, unchanged.").format(when=when, old=old)
+    return _("Copied {when}. Since then the device has been unplugged and has not installed "
+             "it; the file is still on it, unchanged.").format(when=when)
 
 
 def not_installed_advice(hidden_folder: bool = False) -> str:
@@ -123,12 +124,38 @@ def update_state_text(state: str | None, count: int = 0, only=None,
     return _("Checking…")
 
 
+def ready_heading(waiting: int) -> str:
+    """The heading of the Updates page when `waiting` updates are copied and wait for the
+    device; what to do is under it (ready_line). The row "Device Software" says both in one
+    sentence (update_state_text)."""
+    # TRANSLATORS: heading of the Updates page when updates are copied and wait for the device
+    # to be unplugged (or ejected)
+    return ngettext("Update Ready", "Updates Ready", waiting)
+
+
+def ready_line(waiting: int, count: int, mass_storage: bool) -> str:
+    """The line under ready_heading: unplug the device, or eject it (`mass_storage`), and how
+    many more there are to install (`count`)."""
+    if mass_storage:
+        # TRANSLATORS: the line under "Update Ready" on the Updates page, for a device connected
+        # as a USB drive; without a full stop
+        line = ngettext("Eject the device to install it", "Eject the device to install them",
+                        waiting)
+    else:
+        # TRANSLATORS: the line under "Update Ready" on the Updates page; without a full stop
+        line = ngettext("Unplug the device to install it", "Unplug the device to install them",
+                        waiting)
+    return caption(line, more_available(count))
+
+
 def more_available(count: int) -> str:
     """After an update copied already: how many more there are to install ("" for none)."""
     if not count:
         return ""
-    # TRANSLATORS: after "Update ready: unplug the device to install it": updates
-    # still to install besides the one copied already
+    # TRANSLATORS: after "Update ready: unplug the device to install it" or "Update ready: eject
+    # the device to install it" (and, on the Updates page, after "Unplug the device to install
+    # it" or "Eject the device to install it"): updates still to install besides the one copied
+    # already
     return ngettext("{count} more available", "{count} more available", count).format(
         count=count)
 
@@ -1023,7 +1050,7 @@ def satellite_reason(reason: str | None) -> str:
         # e.g. "14:05"
         return _("Garmin's server asks to wait until {time}").format(time=f"{until:%H:%M}")
     if reason and reason.startswith(satellite.NETWORK):
-        return reason[len(satellite.NETWORK):]  # the network error, as the log tells it
+        return reason[len(satellite.NETWORK):]  # the words of the network error
     return reason or ""
 
 

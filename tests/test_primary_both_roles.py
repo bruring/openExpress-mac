@@ -180,7 +180,7 @@ def test_the_service_changes_the_primary_training_device(device, training, apply
     ({"applies": False}, service.PrimaryTrainingError,
      "Garmin Connect accepted the request, but the primary training device did not change.",
      [LIST, READ_TRAINING, SET_TRAINING, READ_TRAINING]),
-    ({"put_status": 500}, ApiError, "Primary training device: HTTP 500",
+    ({"put_status": 500}, ApiError, "Primary training device: server error (HTTP 500)",
      [LIST, READ_TRAINING, SET_TRAINING]),
 ], ids=["cannot", "unknown", "no-flag", "another-account", "not-applied", "http500"])
 def test_the_service_refuses_to_change_the_primary_training_device(device, state, error, text,
@@ -240,7 +240,7 @@ def test_the_service_changes_the_primary_wearable(device, wearable, apply, sent,
     ({"applies": False}, service.PrimaryWearableError,
      "Garmin Connect accepted the request, but the primary wearable did not change.",
      [LIST, SET_WEARABLE, LIST]),
-    ({"put_status": 500}, ApiError, "Primary wearable: HTTP 500", [LIST, SET_WEARABLE]),
+    ({"put_status": 500}, ApiError, "Primary wearable: server error (HTTP 500)", [LIST, SET_WEARABLE]),
 ], ids=["cannot", "unknown", "no-flag", "another-account", "not-applied", "http500"])
 def test_the_service_refuses_to_change_the_primary_wearable(device, state, error, text, sent):
     account = Account(**state)

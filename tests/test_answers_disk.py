@@ -28,7 +28,8 @@ def test_the_fields_on_disk_are_those_the_program_reads():
     command that takes the answer from disk: the lists follow the code."""
     not_of_the_answer = {
         "maps.py": {"gma", "unlocks", "mapupdatetype"},  # the activation's, unit-info's
-        "updates.py": {"all", "segmenttype"},  # a filter of the request, unit-info's
+        # a filter of the request, unit-info's; what md5-on-device.json keeps of a write
+        "updates.py": {"all", "segmenttype", "size", "mtime"},
     }
     assert _keys_read("maps.py") - not_of_the_answer["maps.py"] <= answers.MAP_FIELDS
     assert _keys_read("updates.py") - not_of_the_answer["updates.py"] <= answers.SOFTWARE_FIELDS

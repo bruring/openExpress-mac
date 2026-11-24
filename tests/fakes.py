@@ -633,7 +633,7 @@ class Section:
         self.groups = []
 
     def group(self, title="", description=""):
-        group = types.SimpleNamespace(title=title, rows=[], header=None)
+        group = types.SimpleNamespace(title=title, description=description, rows=[], header=None)
         group.add = group.rows.append
         group.set_header_suffix = lambda widget: setattr(group, "header", widget)
         self.groups.append(group)
@@ -822,6 +822,51 @@ def page_window(key):
     return win, section
 
 
+# What the Apps page asks of the window to show the apps on the device and to switch one.
+APPS_PAGE_METHODS = ("_updates_to_offer", "_apps_space", "_waiting_note", "_app_icon",
+                     "_order_blocked", "_store_type_name", "_search_filter", "show_apps",
+                     "toggle_app")
+
+
+def apps_page(apps, **changes):
+    """The Apps page (page_window) of a made-up watch not signed in, filled with `apps`
+    (ciq.InstalledApp) on the device and nothing from the account; `changes`: other attributes
+    of the stand-in window, set before the page is filled. Returns the stand-in and the page."""
+    from openexpress import ciq
+
+    win, section = page_window("apps")
+    device = types.SimpleNamespace(unit_id=3000000001, software_version_str="23.39",
+                                   description="Made-up watch")
+    win.session = types.SimpleNamespace(device=device, storage=None, logged_in=False,
+                                        ownership_error=None)
+    win._updated_apps = set()
+    win.toast = lambda text: None
+    win.load_section = lambda key, force=False: None
+    win._load_app_icons = lambda icons: None
+    for name, value in changes.items():
+        setattr(win, name, value)
+    window_methods(win, APPS_PAGE_METHODS)
+    win.show_apps((ciq.InstalledState(apps=list(apps), available_space=10**9,
+                                      available_slots=31), [], []))
+    return win, section
+
+
+# What MainWindow.show_preferences asks of the window to build the groups of the preferences.
+PREFERENCES_METHODS = ("_button", "_cache_group", "_ask_clear_cache", "_account_group",
+                       "_account_action", "_auto_sync_row")
+
+
+def preferences_window(**changes):
+    """A stand-in for the window around its preferences (MainWindow.show_preferences): not
+    busy, background sync off, nothing it is asked to do done; the groups built by the
+    window's own methods; `changes`: other attributes, or other values of these."""
+    win = window(**{"busy": False, "_action_buttons": [], "_background_enabled": lambda: False,
+                    "set_background": lambda on, done=None: None, "choose_dll": lambda: None,
+                    "error": lambda title, text: None, "run_task": None, "toast": None,
+                    **changes})
+    return window_methods(win, PREFERENCES_METHODS)
+
+
 # The view of a remembered device and its pictures (once picked by name: "picture",
 # "remembered"), found along the whole MRO (window_methods).
 REMEMBERED_METHODS = ("_show_remembered", "_show_account", "_fill_account", "_last_sync_text",
@@ -968,6 +1013,19 @@ def make_client(devices=None, auth=True, **routes):
     return GarminClient(Settings(), Consumer("ck", "cs"),
                         ConnectAuth("t", "ts") if auth else None,
                         RecordingSession(devices, **routes))
+
+
+def no_answer(error, unit_id=1234567890):
+    """What the client raises when a request of its gets no answer (`error`, a requests
+    error): its own error, made by its own code (the upload settings, asked of a session that
+    raises `error`)."""
+    from openexpress.connect import ApiError
+
+    try:
+        make_client(UnitUploadSettings=error).upload_settings(unit_id)
+    except ApiError as raised:
+        return raised
+    raise AssertionError("the client raised nothing")
 
 
 # Made-up FIT files. The base types of the FIT protocol, by the byte of a field definition:
@@ -1223,6 +1281,75 @@ def software_update(**fields):
     return SoftwareUpdate(**{**made_up, **fields})
 
 
+# --- answers of Garmin's servers, GarminDevice.xml and the folders a device hides ------------
+
+
+def offered_update(part, name, path, filename, data, version="2.18", severity="Recommended",
+                   primary=False, installed=True, locale=None, eula=None):
+    """One item the update server offers, the keys as it sends them (camelCase): the file
+    `filename` with the contents `data`, for the folder `path` on the device."""
+    import hashlib
+
+    return {
+        "partNumber": part, "productName": name, "dataType": "Firmware",
+        "displayVersion": version, "severity": severity, "isPrimaryFirmware": primary,
+        "locale": locale, "releaseState": "live", "releaseNotes": [], "eulaUrl": eula,
+        "deliverable": {"downloadUrl": "https://example.org/" + filename,
+                        "md5": hashlib.md5(data).hexdigest().upper(), "sizeInBytes": len(data)},
+        "installation": {"path": path, "fileName": filename, "isReinstall": False,
+                         "isProductInstalled": installed, "isRestartRequired": False,
+                         "order": 0},
+    }
+
+
+def map_entry(name, path, state=0, part=None, size=4, md5="0123456789ABCDEF0123456789ABCDEF",
+              reinstall=False, remove=()):
+    """One map the map server offers, its keys in lower case (connect.lower_keys): `name`, of
+    one file at `path` on the device, `size` bytes; `state`: its installationstate; `part`: its
+    region part number (else its name); `remove`: the files it removes."""
+    return {
+        "displayname": name, "maptype": "CityNavigator", "installationstate": state,
+        "isreinstall": reinstall, "canuninstall": True,
+        "release": {"majorversion": 2026, "minorversion": 20},
+        "downloadhosts": {"foregroundprimaryhost": "https://example.org/maps/",
+                          "failoverhosts": []},
+        "filestoremove": [{"filename": p} for p in remove],
+        "installoptions": [{"ispreferred": True,
+                            "identifier": {"regionpartnumber": name if part is None else part},
+                            "files": [{"filename": path, "datatype": "X",
+                                       "deliverableoptions": [{
+                                           "type": 1, "url": "x.img", "md5": md5,
+                                           "sizeinbytes": size}]}]}],
+    }
+
+
+# A component in Garmin/RegionMaps: a device that names it has that folder for its own files.
+REGION_COMPONENT = """  <UpdateFile><PartNumber>006-D0005-00</PartNumber><Version><Major>1</Major>
+   <Minor>10</Minor></Version><Path>Garmin/RegionMaps</Path><FileName>made_up.rgn</FileName>
+  </UpdateFile>
+"""
+
+
+def xml_with(root, block, folder="GARMIN"):
+    """`root`, its GarminDevice.xml (in `folder`) with `block` added at the end of what it
+    declares (MassStorageMode)."""
+    xml = root / folder / "GarminDevice.xml"
+    text = xml.read_text()
+    assert text.count("</MassStorageMode>") == 1, "a GarminDevice.xml without MassStorageMode"
+    xml.write_text(text.replace("</MassStorageMode>", block + "</MassStorageMode>"))
+    return root
+
+
+def hidden_at(folder: str, hidden: list[str]) -> str | None:
+    """The folder of `hidden` (the folders a device hides) that `folder` is or is in, in any
+    letter case; None when it is seen."""
+    key = folder.casefold()
+    for h in sorted(hidden, key=len):
+        if key == h.casefold() or key.startswith(h.casefold() + "/"):
+            return h
+    return None
+
+
 # --- satellite data -----------------------------------------------------------------------------
 
 
@@ -1292,3 +1419,75 @@ class FakeKeychain(keychain.Backend):
 
     def delete(self, account: str) -> bool:
         return self.items.pop(account, None) is not None
+
+
+# --- another openExpress process with a USB session of its own (device.session_mark) -------
+
+_OTHER_SESSION = """
+import os, sys, time
+sys.path.insert(0, sys.argv[1])
+from openexpress.device import session_mark
+bus, address, ready, stop, how, quiet = sys.argv[2:8]
+mark = session_mark.begin((int(bus), int(address)))
+open(ready, "w").write("marked")
+end = time.monotonic() + 30
+while not os.path.exists(stop) and time.monotonic() < end:
+    time.sleep(0.05)
+if how == "crash":
+    os._exit(1)  # ended in its session: no until, and the kernel lets go of the lock
+mark.end(float(quiet))
+"""
+
+
+class OtherProcessSession:
+    """Another openExpress process, a real one, marking a session of its own on the device at
+    `place` (bus, device number) with the program's session_mark, in the runtime folder
+    `runtime` (its XDG_RUNTIME_DIR): marked once it is made; `finish()` ends its session, with a
+    quiet of `quiet` seconds after it, or as a process that died in it (`how="crash"`)."""
+
+    def __init__(self, folder, runtime, place=(3, 14), how="end", quiet=15.0):
+        import sys
+        import time
+        from pathlib import Path
+
+        repo = Path(__file__).resolve().parent.parent
+        self.ready = Path(folder) / f"marked-{place[0]}-{place[1]}"
+        self.stop = Path(folder) / f"stop-{place[0]}-{place[1]}"
+        self.process = subprocess.Popen(
+            [sys.executable, "-I", "-c", _OTHER_SESSION, str(repo), str(place[0]),
+             str(place[1]), str(self.ready), str(self.stop), how, str(quiet)],
+            env={**os.environ, "XDG_RUNTIME_DIR": str(runtime)})
+        end = time.monotonic() + 20
+        while not self.ready.exists() and self.process.poll() is None and time.monotonic() < end:
+            time.sleep(0.02)
+        if not self.ready.exists():
+            self.process.kill()
+            raise AssertionError("the other process did not mark its session")
+
+    def finish(self) -> None:
+        self.stop.touch()
+        self.process.wait(timeout=20)
+
+
+# --- openExpress's own USB session on a made-up device ---------------------------------------
+
+
+@contextlib.contextmanager
+def ptp_opened(fake):
+    """A USB session of openExpress's own on `fake` (ptp_fake.FakeDevice), as exclusive_ptp
+    gives one: the device connected anew, a PTP session on it for the block."""
+    from openexpress.device import ptp
+
+    fake.reconnect()
+    with ptp.Session(fake) as session:
+        yield session
+
+
+def hidden_folder_waits(monkeypatch) -> list:
+    """The waits for a USB session of openExpress's own (hidden_folders._sleep), recorded in
+    the list returned instead of slept."""
+    from openexpress import hidden_folders
+
+    waited = []
+    monkeypatch.setattr(hidden_folders, "_sleep", waited.append)
+    return waited

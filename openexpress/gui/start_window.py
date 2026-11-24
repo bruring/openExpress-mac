@@ -218,7 +218,7 @@ def choice_subtitle(summary) -> str:
     if summary.reason == NOT_MOUNTED:
         return _("Not mounted; choose it to open it")
     if summary.reason == NO_DEVICE_FILE:
-        return _("No GarminDevice.xml found")
+        return _("Its device description (GarminDevice.xml) was not found")
     return _("Could not be read")
 
 
@@ -676,17 +676,18 @@ class StartWindow:
         and drawn again by _redraw_remembered)."""
         fields = devicelist.account_fields(entry)
         version = fields["software_version"]
+        unit = service.unit_id_of(entry.get("unitid"))
         self._remembered_entry = None  # nothing of it is kept here
         self.remembered.show(
             name=fields["description"],
             version=software_text(version, from_account=True) if version else "",
             part_number=fields["part_number"],
             last_seen=_("Not seen on this computer"),
-            last_sync=self._last_sync_text(service.unit_id_of(entry.get("unitid"))))
-        show_remembered_more(self, service.unit_id_of(entry.get("unitid")))
+            last_sync=self._last_sync_text(unit))
+        show_remembered_more(self, unit)
         self._show_page_picture(fields["part_number"], fields["image_url"], fields["category"],
                                 fields["description"])
-        self._remembered_unit = service.unit_id_of(entry.get("unitid"))
+        self._remembered_unit = unit
         self._remembered_from_account = True
         self.remembered.allow_forget(False)  # nothing of it is kept here
 

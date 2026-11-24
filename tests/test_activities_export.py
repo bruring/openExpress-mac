@@ -126,6 +126,23 @@ def test_what_cannot_be_exported_says_why_and_nothing_is_written(device, gpx_fol
     assert not gpx_folder.exists()  # not the run either
 
 
+def test_a_file_damaged_inside_is_said_in_the_words_of_an_unreadable_one(device, gpx_folder,
+                                                                         capsys, monkeypatch):
+    """Its summary read, its records not: the words for a file that cannot be read, not those
+    of the reading's own error."""
+    from openexpress import fit, gpx
+
+    def damaged(data, name):
+        raise fit.FitError("Damaged FIT file (unpack requires a buffer of 4 bytes)")
+
+    monkeypatch.setattr(gpx, "track", damaged)
+    code, _lines, err = export(capsys, device, RUN, "--apply")
+    assert code == 1
+    assert err.splitlines() == [f"Error: {RUN} cannot be read as a FIT file.",
+                                "Nothing was written."]
+    assert not gpx_folder.exists()
+
+
 def test_export_needs_a_name(device):
     with pytest.raises(SystemExit) as stopped:
         cli.main(["--path", str(device), "activities", "export"])

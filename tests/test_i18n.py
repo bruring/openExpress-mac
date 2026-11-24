@@ -60,8 +60,8 @@ def _entries(po: Path):
             yield fields
 
 
-@pytest.mark.parametrize("po", PO_FILES, ids=lambda p: p.stem)
-def test_placeholders_match(po):
+def _placeholders_match(po):
+    """The placeholders of every translation in `po` against its English text."""
     for e in _entries(po):
         if "fuzzy" in e.get("flags", ""):  # not in the catalog the program reads
             continue
@@ -71,6 +71,11 @@ def test_placeholders_match(po):
                 assert set(PLACEHOLDER.findall(value)) <= source, (e["msgid"], value)
                 if key in ("msgstr", "msgstr[2]"):
                     assert source <= set(PLACEHOLDER.findall(value)) | {"%s"}, (e["msgid"], value)
+
+
+@pytest.mark.parametrize("po", PO_FILES, ids=lambda p: p.stem)
+def test_placeholders_match(po):
+    _placeholders_match(po)
 
 
 # A one-letter word: a letter that follows no letter or digit, and is no format code (%i),
@@ -94,14 +99,14 @@ def test_a_fuzzy_entry_is_not_checked_for_placeholders(tmp_path):
     po = tmp_path / "xx.po"
     po.write_text(PLACEHOLDER_PO.format(flags="#, fuzzy, python-brace-format\n"),
                   encoding="utf-8")
-    test_placeholders_match(po)
+    _placeholders_match(po)
 
 
 def test_a_translated_entry_with_a_placeholder_of_its_own_is_refused(tmp_path):
     po = tmp_path / "xx.po"
     po.write_text(PLACEHOLDER_PO.format(flags="#, python-brace-format\n"), encoding="utf-8")
     with pytest.raises(AssertionError):
-        test_placeholders_match(po)
+        _placeholders_match(po)
 
 
 def _unescaped(raw: str) -> str:

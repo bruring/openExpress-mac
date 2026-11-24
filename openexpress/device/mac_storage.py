@@ -97,17 +97,26 @@ def _entry(info: ptp.ObjectInfo) -> Entry:
 class MacStorage(Storage):
     """One storage of an MTP device (its internal storage), through a PTP session of its own,
     open from the opening to close(). Over MTP the old file under a name is deleted before
-    the new one is sent (replaces_atomically False), as through gvfs."""
+    the new one is sent (replaces_atomically False), as through gvfs.
+
+    The device's other storages (a memory card) are MacStorages of the same session, kept in
+    `others` of the one with GARMIN/GarminDevice.xml (adopt): they share its lock, so that a
+    transaction on one never starts in the middle of one on another, its stall and its
+    closing; what they listed is dropped with its own."""
 
     def __init__(self, session: ptp.Session, store: int, usb: GarminUsb | None = None,
-                 uri: str | None = None, description: str = ""):
+                 uri: str | None = None, description: str = "",
+                 removable: bool | None = None):
         self._session = session
         self.store = store
         self.usb = usb
         self.device_uri = uri
+        self.description = description
+        self.removable = removable
         # As gvfs names the storage of a device: its address, then the storage's name.
         self.label = (uri or "mtp://") + (description or f"{store:08x}")
         self._lock = threading.RLock()
+        self._owner: MacStorage | None = None  # the storage whose session this one shares
         # What was listed, by the real path of each folder ("": the top level), and the handle
         # of each object listed by its real path.
         self._folders: dict[str, list[ptp.ObjectInfo]] = {}
@@ -122,15 +131,34 @@ class MacStorage(Storage):
 
     # --- the session --------------------------------------------------------------------
 
+    def adopt(self, others: list[MacStorage]) -> None:
+        """The device's other storages, of this storage's session: kept in `others`, sharing
+        its lock, its stall and its closing."""
+        for other in others:
+            other._owner = self
+            other._lock = self._lock
+        self.others = tuple(others)
+
     @property
     def closed(self) -> bool:
-        return self._closed
+        return self._closed or (self._owner is not None and self._owner.closed)
 
     def _responding(self) -> None:
-        """As Storage._responding; DeviceError once it is closed."""
+        """As Storage._responding; DeviceError once it is closed. A storage of another one's
+        session also fails as that one does."""
+        if self._owner is not None:
+            self._owner._responding()
         super()._responding()
         if self._closed:
             raise DeviceError(_("The connection to the device is closed."))
+
+    def _forget_listed(self) -> None:
+        """What was listed of every storage of this session dropped (a refresh, a session lent:
+        anything may have changed on any of them)."""
+        root = self._owner or self
+        for st in (root, *root.others):
+            st._folders.clear()
+            st._space_told = None
 
     def _call(self, what: str, action):
         """action(session), its PtpError said as `what` failing (DeviceError). A session out
@@ -147,6 +175,9 @@ class MacStorage(Storage):
                 raise DeviceError(f"{what}: {e}") from e
 
     def _stall(self, what: str, error: Exception) -> DeviceNotResponding:
+        if self._owner is not None:  # the session is the owner's: it stalls, and this with it
+            self._stalled = self._owner._stall(what, error)
+            return self._stalled
         stalled = self._stalled_during(what)
         note_stalled(self.usb)
         log.warning("device: the PTP session broke off (%s: %s); the device is let go",
@@ -156,9 +187,13 @@ class MacStorage(Storage):
 
     def close(self) -> None:
         """The session closed and the device let go (the camera service goes on); nothing can
-        be done with the storage afterwards. Again: nothing."""
+        be done with the storage afterwards. Again: nothing. A storage of another one's session
+        is only marked closed: the session is closed with the other one."""
         with self._lock:
             if self._closed:
+                return
+            if self._owner is not None:
+                self._closed = True
                 return
             self._release()
         log.info("device: closed (USB %s)", self.usb_id or "?")
@@ -279,6 +314,24 @@ class MacStorage(Storage):
         self._call(what, lambda s: s.read_into(found.handle, content.extend, size=found.size,
                                                in_parts=in_parts))
         return bytes(content)
+
+    def _copy_out(self, real_path: str, dest: Path, told=None) -> int:
+        """Streamed into `dest` as the device sends it (GetObject, or parts where the device
+        reads them), never held whole: a map file is gigabytes."""
+        what = _("Cannot read {path}").format(path=real_path)
+        found = self._file(real_path, what)
+        done = 0
+        with open(dest, "wb") as out:
+            def piece(data: bytes) -> None:
+                nonlocal done
+                out.write(data)
+                done += len(data)
+                if told is not None:
+                    told(done, found.size)
+
+            self._call(what, lambda s: s.read_into(found.handle, piece, size=found.size,
+                                                   in_parts=True))
+        return done
 
     def _read_start(self, real_path: str, count: int) -> bytes:
         """The first bytes alone (GetPartialObject); the whole file cut, on a device that does
@@ -407,12 +460,47 @@ class MacStorage(Storage):
         return (space.capacity or None) if space is not None else None
 
     def refresh(self, progress=None) -> bool:
-        """What was listed is dropped: the next look asks the device (its sizes now)."""
+        """What was listed is dropped: the next look asks the device (its sizes now); and the
+        storages the device has are asked again (a memory card taken out or put back while the
+        session stays open: the device lists it again at once)."""
         self._responding()
         with self._lock:
-            self._folders.clear()
-            self._space_told = None
+            self._forget_listed()
+            if self._owner is None:
+                self._rescan_storages()
         return True
+
+    def _rescan_storages(self) -> None:
+        """`others` as the device lists its storages now: one gone is closed and dropped, one
+        new opened beside; nothing changes when the device would not say (it is asked again at
+        the next refresh)."""
+        try:
+            stores = [s for s in self._session.storages() if s != self.store]
+        except ptp.PtpError as e:
+            log.info("device: storages not asked again (%s)", type(e).__name__)
+            return
+        kept = {o.store: o for o in self.others}
+        if list(kept) == stores:
+            return
+        now = []
+        for store in stores:
+            if store in kept:
+                now.append(kept[store])
+                continue
+            try:
+                info = self._session.storage_info(store)
+            except ptp.PtpError:
+                info = None
+            now.append(MacStorage(self._session, store, self.usb, self.device_uri,
+                                  info.description if info else "",
+                                  removable=info.removable if info else None))
+        for store, gone in kept.items():
+            if store not in stores:
+                gone._closed = True  # e.g. a memory card taken out
+        self.adopt(now)
+        self.other_storages = tuple(o.description or f"{o.store:08x}" for o in now)
+        log.info("device: its storages now: %s", ", ".join(
+            [self.description or "this one", *self.other_storages]))
 
     def exclusive_ptp(self):
         """The session of the storage, lent for the block (no unmount: nothing else holds the
@@ -426,8 +514,7 @@ class MacStorage(Storage):
             try:
                 yield self._session
             finally:
-                self._folders.clear()
-                self._space_told = None
+                self._forget_listed()
                 if self._session.broken and not self.stalled:
                     self._stall(_("Cannot read the device"), ptp.PtpError("out of step"))
 
@@ -743,7 +830,8 @@ def _storage_with_device_file(session: ptp.Session, found: FoundDevice) -> MacSt
         except ptp.PtpRefused:
             info = None
         st = MacStorage(session, store, found.usb, found.uri,
-                        info.description if info else "")
+                        info.description if info else "",
+                        removable=info.removable if info else None)
         storages.append((st, info))
         if chosen is None and st.exists("GARMIN/GarminDevice.xml"):
             chosen = st
@@ -755,6 +843,9 @@ def _storage_with_device_file(session: ptp.Session, found: FoundDevice) -> MacSt
     # beside its Media one): music.py refuses to create its folder on the wrong one.
     chosen.other_storages = tuple(_storage_name(st, info) for st, info in storages
                                   if st is not chosen)
+    # The others themselves, on the same session: a memory card among them
+    # (openexpress.device.card).
+    chosen.adopt([st for st, _info in storages if st is not chosen])
     return chosen
 
 

@@ -11,10 +11,10 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gdk, Gtk  # noqa: E402 - imports must follow gi.require_version
+from gi.repository import Gdk, Gtk  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress.gui.activity_colours import accent_colour  # noqa: E402
-from openexpress.gui.activity_zones import ZoneBar  # noqa: E402
+from openexpress.gui.activity_zones import ZoneBar, boxed_section  # noqa: E402
 from openexpress.gui.words import (  # noqa: E402
     effect_name,
     effect_text,
@@ -63,9 +63,6 @@ class EffectList(Gtk.Box):
 
     def __init__(self, data):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        group = Adw.PreferencesGroup(title=effect_title())
-        listed = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        listed.add_css_class("boxed-list")
         self.rows = [EffectRow(effect_name(kind), effect_text(value), EffectBar(value))
                      for kind, value in (("aerobic", data.aerobic_effect),
                                          ("anaerobic", data.anaerobic_effect))
@@ -73,10 +70,7 @@ class EffectList(Gtk.Box):
         if data.training_load is not None:
             self.rows.append(EffectRow(training_load_name(),
                                        training_load_text(data.training_load)))
-        for row in self.rows:
-            listed.append(Gtk.ListBoxRow(child=row, activatable=False))
-        group.add(listed)
-        self.append(group)
+        self.append(boxed_section(effect_title(), self.rows))
 
 
 def has_effect(data) -> bool:

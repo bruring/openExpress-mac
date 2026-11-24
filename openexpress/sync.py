@@ -32,6 +32,7 @@ from openexpress.connect import (
     Unauthorized,
     acknowledge,
 )
+from openexpress.device import whole_reads
 from openexpress.device.storage import (
     DeviceNotResponding,
     Entry,
@@ -504,7 +505,7 @@ def plan_uploads(
                     plan.already_done += 1
                     continue
             else:
-                cand.data = storage.read(path)
+                cand.data = whole_reads.whole_file(storage, path, entry.size)
                 if not state.singleton_changed(name, path, md5(cand.data)):
                     plan.already_done += 1
                     continue
@@ -583,7 +584,7 @@ def _read_candidate(c: UploadCandidate, storage: Storage, state: SyncState) -> b
         return c.data
     if c.device_path is None:
         return state.pending_path(c.datatype, c.name).read_bytes()
-    return storage.read(c.device_path)
+    return whole_reads.whole_file(storage, c.device_path, c.size)
 
 
 class _WholeReads:
@@ -604,7 +605,7 @@ class _WholeReads:
         if not why or c.device_path is None or not self._refresh():
             return data, why
         c.data = None  # the plan may have read it before the refresh
-        data = self.storage.read(c.device_path)
+        data = whole_reads.whole_file(self.storage, c.device_path, c.size)
         again = still_being_written(c, data)
         # The type and the sizes: never the name of the file.
         log.info("upload: a %s file read again after the device was mounted again: %s",
@@ -654,7 +655,7 @@ def _run_uploads(plan, device, storage, client, state, progress) -> UploadReport
         except (RemountFailed, DeviceNotResponding):
             raise  # the device is not there to read: the sync stops
         except Exception as e:  # noqa: BLE001 - one unreadable file must not stop the sync
-            report.failed.append((_label(c), str(e)))
+            report.failed.append((_label(c), applog.error_text(e)))
             unreadable.add(id(c))
             continue
         if why:
@@ -708,7 +709,7 @@ def _run_uploads(plan, device, storage, client, state, progress) -> UploadReport
         except (RemountFailed, DeviceNotResponding):
             raise  # the device is not there to read: the sync stops
         except Exception as e:  # noqa: BLE001
-            report.failed.append((label, str(e)))
+            report.failed.append((label, applog.error_text(e)))
             if ordered:
                 stop_types.add(c.datatype)
             continue
@@ -754,7 +755,7 @@ def _upload_one(c, data, label, last, client, state, report, stop_types) -> None
         # goes on with the other files (monitoring and sleep data: with the other types, as
         # those must arrive in order). An expired login and a wrong clock are raised above.
         except Exception as e:  # noqa: BLE001
-            ok, error = False, str(e)
+            ok, error = False, applog.error_text(e)
             break
         codes = _failure_codes(res.body) if 200 <= res.status < 300 else set()
         if res.status == 409:
@@ -1141,7 +1142,7 @@ def _run_downloads(items, storage, client, progress, state, makers: Makers) -> D
             except (Unauthorized, DeviceNotVerified, DeviceNotResponding):
                 raise
             except Exception as e:  # noqa: BLE001
-                report.failed.append((label, str(e)))
+                report.failed.append((label, applog.error_text(e)))
                 report.failed_in_log.append((quiet, str(e)))
                 continue
             # Written: not acknowledged until Garmin Connect says so, whatever stops the sync
@@ -1214,7 +1215,7 @@ def describe_queue(items: list[DownloadItem], client: GarminClient) -> list[Queu
         try:
             data = client.download_message(it.url, it.absolute)
         except Exception as e:  # noqa: BLE001 - said in the description of this one file
-            found.append(QueueFile(it, error=str(e) or type(e).__name__))
+            found.append(QueueFile(it, error=applog.error_text(e)))
             continue
         if data is None:
             found.append(QueueFile(it, empty=True))

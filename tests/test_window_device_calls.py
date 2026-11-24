@@ -185,6 +185,16 @@ def _bar_window(map_window, monkeypatch, delay):
     return win, m
 
 
+def _words_due(monkeypatch, text_shown) -> None:
+    """The words of a quick task (not text_shown) are due long after it ends: a window's loop
+    held up meanwhile (a heavy redraw in a full run of the tests) never shows them. A slow
+    task's words stay due at 500 ms."""
+    from openexpress.gui import window_tasks
+
+    if not text_shown:
+        monkeypatch.setattr(window_tasks, "TEXT_AFTER_MS", 60_000)
+
+
 def _spinning(widget) -> bool:
     from gi.repository import Adw, Gtk
 
@@ -225,6 +235,7 @@ def test_the_button_spins_and_the_text_waits_half_a_second(map_window, monkeypat
 
     from openexpress.gui import app
 
+    _words_due(monkeypatch, text_shown)
     win, m = _bar_window(map_window, monkeypatch, delay)
     button = Gtk.Button(label="Install")
     app.MainWindow.confirm_map(win, m, button)
@@ -866,6 +877,7 @@ def test_restore_order_spins_its_button(order_device, monkeypatch, delay, text_s
     from openexpress import ciq
     from openexpress.gui import app
 
+    _words_due(monkeypatch, text_shown)
     st, dev, backups = order_device
     Dialog.made = []
     monkeypatch.setattr(Adw, "AlertDialog", Dialog)
@@ -940,6 +952,7 @@ def test_set_as_primary_spins_its_button(monkeypatch, delay, text_shown):
     from openexpress import service
     from openexpress.gui import app
 
+    _words_due(monkeypatch, text_shown)
     questions = []
     monkeypatch.setattr(Adw.AlertDialog, "present", lambda self, parent: questions.append(self))
     monkeypatch.setattr(service, "set_primary_training",
@@ -1035,6 +1048,7 @@ def test_eject_spins_its_button(monkeypatch, delay, text_shown, in_the_window):
 
     from openexpress.gui import app
 
+    _words_due(monkeypatch, text_shown)
     dialogs = []
     monkeypatch.setattr(Adw.AlertDialog, "present", lambda self, parent: dialogs.append(self))
     in_the_window("eject", lambda storage, **told: time.sleep(delay))

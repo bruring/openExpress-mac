@@ -161,7 +161,7 @@ def note_segment(device, info) -> None:
     first two while the kind is not known (devicelist.note_kind_evidence), the last once a
     model (devicelist.note_map_update_type)."""
     segment = info.get("segmenttype") if isinstance(info, dict) else None
-    bike_accessory = isinstance(segment, str) and segment.casefold() == "bikeaccessory"
+    bike_accessory = _bike_accessory(info)
     if bike_accessory:
         known_devices.set_category(device.unit_id, known_devices.BIKE_ACCESSORY)
     if isinstance(info, dict):
@@ -187,6 +187,12 @@ def is_bike_accessory(client, device, ask=None) -> bool:
         log.info("software update: unit-info failed (%s)", type(e).__name__)
         return False
     note_segment(device, info)
+    return _bike_accessory(info)
+
+
+def _bike_accessory(info) -> bool:
+    """Whether an answer of Garmin's update server (unit-info) files the device as a bike
+    accessory: its segment alone."""
     segment = info.get("segmenttype") if isinstance(info, dict) else None
     return isinstance(segment, str) and segment.casefold() == "bikeaccessory"
 

@@ -500,6 +500,8 @@ class Engine:
             "maps.install": ("device", self.maps_install),
             "maps.update": ("device", self.maps_update),
             "maps.remove": ("device", self.maps_remove),
+            "maps.move": ("device", self.maps_move),
+            "maps.card_reader": ("free", self.maps_card_reader),
             "apps.list": ("device", self.apps_list),
             "apps.install": ("device", self.apps_install),
             "apps.remove": ("device", self.apps_remove),
@@ -658,6 +660,8 @@ class Engine:
                 params = {"request": req.id, "phase": phase, "done": done, "total": total}
                 if item:
                     params["item"] = item
+                if (message.bytes_done is not None and message.bytes_total) or message.in_bytes:
+                    params["unit"] = "bytes"  # done and total are bytes: the app shows a speed
                 self.event("progress", params)
             else:
                 req.lines.append(str(message))
@@ -1403,8 +1407,11 @@ class Engine:
         st, dev, all_maps, listed = cli._load_maps(self.args_for(a, "maps"),
                                                    GarminClient(Settings.load()))
         free = st.free_space()
+        storages = map_storages(st, dev)
+        has_card = len(storages) > 1
         if not listed:
-            return {"maps": [], "own_maps": [], "free": free, "message": mp.no_maps_message()}
+            return {"maps": [], "own_maps": [], "free": free, "storages": storages,
+                    "message": mp.no_maps_message()}
         on_device = [m for m in all_maps if m.listed or m.waiting]
         shown = all_maps if every else on_device
 
@@ -1414,19 +1421,27 @@ class Engine:
             return {"name": m.name, "version": m.version, "size": m.size,
                     "installed": m.installed, "status": status,
                     "installed_version": (m.version if status == "up to date"
-                                          else installed_map_version(st, m)
+                                          else installed_map_version(st, m, dev)
                                           if status == "update" else None),
                     "status_text": m.status,
                     "region": m.region or None, "type": m.map_type, "waiting": m.waiting,
                     "incomplete": m.incomplete, "restricted": m.restricted is True,
-                    "can_install": mp.can_install(m), "can_remove": m.can_uninstall}
+                    "can_install": mp.can_install(m),
+                    "can_remove": m.can_uninstall and mp.removal_refused(m) is None,
+                    "location": m.location,
+                    "can_move": has_card and mp.move_refused(m) is None,
+                    "move_size": mp.move_size(m, all_maps) if has_card else None,
+                    # what an install would not download again, a move not copy anew
+                    "cached_size": sum(f.size for f in m.files if mp.in_cache(f)),
+                    "move_cached": mp.move_cached(m, all_maps) if has_card else None}
 
         maps = [entry(m) for m in sorted(
             shown, key=lambda m: (m not in on_device, m.map_type, m.name))]
         own = [{"file": o.filename, "size": o.size, "title": o.title, "path": o.path}
                for o in ownmaps.list_own(dev, st, all_maps)]
-        return {"maps": maps, "own_maps": own, "free": free,
-                "more_available": len(all_maps) - len(on_device)}
+        return {"maps": maps, "own_maps": own, "free": free, "storages": storages,
+                "more_available": len(all_maps) - len(on_device),
+                "download_speed": mp.download_speed()}
 
     def _each_map(self, req: Request, a: Attached, command: str) -> dict:
         """maps.install, maps.remove: as `maps COMMAND NAME` for each map named, one after the
@@ -1441,8 +1456,28 @@ class Engine:
 
         apply = _apply_option(req)
         names = _names(req.params, "maps")
+        # maps.install: "internal" (the default) or "card"; maps.move: where the map goes
+        to = req.params.get("to")
+        if command == "move" and to is None:
+            raise _missing("to")
+        if (command == "remove" and to is not None) or to not in (None, "internal", "card"):
+            raise _invalid("to")
+        where = ["--to", to] if to else []
+        # maps.install, maps.move: the device's card in this computer's card reader
+        reader = req.params.get("card_reader")
+        if reader is not None and (command == "remove" or not isinstance(reader, str)
+                                   or not reader.strip()):
+            raise _invalid("card_reader")
+        if reader:
+            where += ["--card-reader", reader]
+        # maps.move: "device" (the default) or "download": where its files come from
+        source = req.params.get("source")
+        if source not in (None, "device", "download") or (source and command != "move"):
+            raise _invalid("source")
+        if source == "download":
+            where.append("--download")
         args = cli.build_parser().parse_args([*self.command_line(a), "maps", command, *apply,
-                                              "--", names[0]])
+                                              *where, "--", names[0]])
         start = len(req.lines)
         try:
             client = GarminClient(Settings.load())
@@ -1462,7 +1497,7 @@ class Engine:
             before = len(req.lines)
             try:
                 if n:
-                    mp.mark_waiting(st, all_maps)
+                    mp.mark_waiting(st, all_maps, dev)
                 code = cli.change_map(args, client, st, dev, all_maps, mp.find(all_maps, name))
             except Exception as e:  # noqa: BLE001 - the error of this map, then the next
                 error = error_of(e)
@@ -1478,6 +1513,25 @@ class Engine:
 
     def maps_remove(self, req: Request, a: Attached) -> dict:
         return self._each_map(req, a, "remove")
+
+    def maps_card_reader(self, req: Request) -> dict:
+        """The memory cards in this computer's card reader (mounted volumes with a Garmin
+        folder), each with whether it is this device's (`device`: its unit ID) and why not.
+        Nothing is opened on the device: the app asks it while it waits for the card."""
+        from openexpress.device import card as cards
+
+        wanted = req.params.get("device")
+        if not (isinstance(wanted, (str, int)) and str(wanted).isdigit()):
+            raise _invalid("device")
+        unit_id = int(wanted)
+        return {"volumes": [{"path": str(path), "name": path.name, "is_card": not why,
+                             "reason": why or None}
+                            for path, why in cards.reader_volumes(unit_id)],
+                "remembered": cards.remembered(unit_id) is not None}
+
+    def maps_move(self, req: Request, a: Attached) -> dict:
+        """As `maps move NAME --to internal|card` for each map named."""
+        return self._each_map(req, a, "move")
 
     def maps_update(self, req: Request, a: Attached) -> dict:
         """As `maps update [--apply]`: every installed map with an update."""
@@ -1798,18 +1852,40 @@ def _solar_text(days: list) -> str:
 _HEADER_VERSION = re.compile(r"\s(\d+\.\d+)$")
 
 
-def installed_map_version(storage, m) -> str | None:
+def map_storages(storage, device) -> list[dict]:
+    """The storages maps may be on: the device's own (internal), then its memory card when it
+    has one (openexpress.device.card), each with its name, free space and capacity."""
+    from openexpress.device import card as cards
+
+    def entry(kind: str, st) -> dict:
+        return {"id": kind, "name": st.description or None, "free": st.free_space(),
+                "capacity": st.capacity(), "removable": kind == cards.CARD}
+
+    out = [entry(cards.INTERNAL, storage)]
+    card = cards.card_of(storage, device)
+    if card is not None:
+        out.append(entry(cards.CARD, card))
+    return out
+
+
+def installed_map_version(storage, m, device=None) -> str | None:
     """The version of map `m` the device has, for a map with an update: Garmin's answer gives
     only the new one, so it is read from the name in the header of its files on the device
-    (ownmaps.read_title; the first bytes of each .img file of it, read only). None when no
-    header ends in a version as the server writes one (CourseView has none; a base map writes
-    "v9")."""
+    (ownmaps.read_title; the first bytes of each .img file of it, read only), on its memory
+    card when the map is there. None when no header ends in a version as the server writes one
+    (CourseView has none; a base map writes "v9")."""
     from openexpress import ownmaps
+    from openexpress.device import card as cards
     from openexpress.device.storage import DeviceNotResponding
 
+    card = cards.card_of(storage, device) if m.location == cards.CARD else None
     for f in [f for f in m.files if f.device_path.lower().endswith(".img")][:3]:
+        where, path = storage, f.device_path
+        if card is not None:
+            where, path = card, next(iter(cards.card_paths(f.device_path, device)),
+                                     f.device_path)
         try:
-            title = ownmaps.read_title(storage.read_start(f.device_path, ownmaps.HEADER_SIZE))
+            title = ownmaps.read_title(where.read_start(path, ownmaps.HEADER_SIZE))
         except DeviceNotResponding:
             raise
         except Exception as e:  # noqa: BLE001 - a version not known is no failed list

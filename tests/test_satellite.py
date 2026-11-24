@@ -158,8 +158,8 @@ def test_the_same_file_on_the_watch_is_said_in_the_log(tmp_path, clock, monkeypa
 
 @pytest.mark.parametrize("answer, reason", [
     (requests.ConnectionError("made-up: no route to https://api.gcs.garmin.com/x"),
-     "network:made-up: no route to"),
-    (satellite_answer(b"Not Found", status=404), "network:404 Client Error: Not Found"),
+     "network:no connection"),
+    (satellite_answer(b"Not Found", status=404), "network:server error (HTTP 404)"),
     (satellite_answer(b"CPE_GPS.BIN" + bytes(CPE_SIZE - 11)), satellite.FORMAT),
     (satellite_answer(made_up_cpe(2), kind="application/x-tar"), satellite.FORMAT),
 ])
@@ -172,6 +172,8 @@ def test_a_file_not_had_or_not_of_the_format_writes_nothing(tmp_path, clock, mon
     result = satellite.update(device, storage)
     assert result.kind == "failed" and result.reason.startswith(reason)
     assert "api.gcs.garmin.com" not in result.reason  # the address is not told
+    if reason.startswith(satellite.NETWORK):  # the words of the row: no more than these
+        assert result.reason == reason
     assert on_device(storage) == made_up_cpe(1) and storage.writes == []
     assert satellite.load(UNIT).error == result.reason
 

@@ -24,9 +24,11 @@ from openexpress.connect import (
     ApiError,
     ClockSkew,
     GarminClient,
+    NetworkError,
     Unauthorized,
 )
 from openexpress.console import error as _error
+from openexpress.device import card as cards
 from openexpress.device.storage import DeviceError, DeviceNotResponding, LocalStorage, Storage
 from openexpress.device.xmldevice import GarminDevice, parse
 from openexpress.errors import UserFacingError
@@ -111,21 +113,17 @@ NOTED_AFTER_READING = ("diagnostics", "report")
 READS_HIDDEN_ITSELF = ("maps", "updates")
 
 
-def _read_hidden(st, dev, needed=(), why: str = "") -> bool:
+def _read_hidden(st, dev, needed=(), why: str = "", inside=()) -> bool:
     """Read once a command, through a session of its own, the folders of the device's top level
     that ordinary MTP does not show which `needed` names (updates, maps) or the device is known
-    to hide, with what its GarminDevice.xml names under them (hidden_folders.folders_to_read):
-    what the window reads, so that both count and compare the same; once read, the line of
-    this connection in the device's log counted again, as the window counts it. Whether it read
-    now."""
-    kept = hidden_folders.kept(st)
-    needed = list(needed)
-    # Read once; again only for folders this command needs that the first reading (of the
-    # folders the device is known to hide, as it was opened) did not ask for.
-    if kept is not None and (kept.state != hidden_folders.READ
-                             or all(kept.knows(f) for f in needed)):
-        return False
-    folders = hidden_folders.folders_to_read(dev, [*needed, *(kept.asked() if kept else [])])
+    to hide, with what its GarminDevice.xml names under them, and the folders `inside` folders
+    that are seen whose files the file manager does not show (updates.session_folders;
+    hidden_folders.still_to_read): what the window reads, so that both count and compare the
+    same; once read, the line of this connection in the device's log counted again, as the
+    window counts it. Whether it read now."""
+    if hidden_folders.busy_failures(st):
+        return False  # refused as busy: not asked again within a command, as any failure
+    folders = hidden_folders.still_to_read(st, dev, needed, inside=inside)
     if not folders:
         return False
     with _progress() as progress:
@@ -356,8 +354,9 @@ def cmd_diagnostics(args) -> int:
     if not args.apply:
         print(_("Dry run: nothing was copied. Add --apply to copy the files the device shows now."))
         if args.crash_logs:
-            print(_("With --apply, --crash-logs also reads its hidden crash logs in a session "
-                    "of its own: the device leaves the file manager for a moment."))
+            print(_("With --apply, --crash-logs also reads the device's hidden crash logs over "
+                    "a direct USB connection: the device disappears from the file manager for "
+                    "a moment."))
         return 0
     with _progress() as progress:
         done = diagnostics.copy_files(dev, st, progress=progress)
@@ -919,10 +918,14 @@ def _export_activities(args, found) -> int:
         try:
             track = gpx.track(data, name=stem)
             count = sum(1 for _point in fit.points(data))
-        except (gpx.NoPositions, fit.FitError) as e:
-            kind = "no positions" if isinstance(e, gpx.NoPositions) else "damaged"
+        except gpx.NoPositions as e:
             # TRANSLATORS: an activity not exported to GPX: {name} its file name, {error} why
-            refused.append((kind, _("{name}: {error}").format(name=a.name, error=e)))
+            refused.append(("no positions", _("{name}: {error}").format(name=a.name, error=e)))
+            continue
+        except fit.FitError as e:  # damaged inside: the words of a file that cannot be read
+            log.info("activities export: a file not read (%s)", e)
+            refused.append(("damaged", _("{name} cannot be read as a FIT file.").format(
+                name=a.name)))
             continue
         target = dest / f"{stem}.gpx"
         if target.exists() or any(target == p for p, _track, _count in planned):
@@ -1074,8 +1077,8 @@ def _fit_check(found) -> str:
         return _("Check: damaged: the CRC does not match ({read} B read)").format(
             read=not_whole.read)
     if not_whole.problem is Problem.AFTER_THE_END:
-        return _("Check: damaged: {count} B after the whole FIT data are no FIT file").format(
-            count=not_whole.after)
+        return _("Check: damaged: {count} B after the end of the FIT data do not belong to a "
+                 "FIT file").format(count=not_whole.after)
     return _("Check: not a FIT file ({read} B read)").format(read=not_whole.read)
 
 
@@ -1135,6 +1138,7 @@ def _inspection(name: str, found) -> list[str]:
 
 
 def cmd_login(args) -> int:
+    from openexpress import service
     from openexpress.auth import sso
 
     settings = Settings.load()
@@ -1144,16 +1148,10 @@ def cmd_login(args) -> int:
     else:
         print(_("Opening the Garmin sign-in window…"))
         ticket = sso.login_with_webview(settings)
-    token, secret = client.exchange_ticket(ticket.ticket, ticket.service)
-    auth = store.ConnectAuth(token, secret, settings.environment)
-    client.auth = auth
-    try:
-        prof = client.user_profile()
-        auth.account = {k: prof.get(k) for k in
-                        ("userprofilepk", "username", "emailaddress", "garminguid")}
-    except Exception as e:  # noqa: BLE001 - the token is valid even without the profile
+    auth, error = service.signed_in(client, settings, ticket)
+    if error is not None:
         print(_("Warning: could not fetch the profile ({error})").format(
-            error=str(e) or e.__class__.__name__), file=sys.stderr)
+            error=applog.error_text(error)), file=sys.stderr)
     store.save(auth)
     print(_("Signed in as {account}.").format(account=auth.masked_display))
     return 0
@@ -1421,7 +1419,8 @@ def _status_updates_online(client, s) -> str:
             device = parse(storage.read("GARMIN/GarminDevice.xml"))
         answer = client.software_updates(device.raw)
         items = upd.offered(storage, answer, device, forget_installed=False)  # keeps nothing
-        if _read_hidden(storage, device, upd.hidden_needed(items), "updates go there"):
+        hidden, inside = upd.session_folders(storage, items)
+        if _read_hidden(storage, device, hidden, "updates go there", inside=inside):
             # As the window says it once it has read them.
             items = upd.offered(storage, answer, device, forget_installed=False)
     except DeviceNotResponding:
@@ -1519,7 +1518,7 @@ def cmd_devices(args) -> int:
     if not args.apply:
         print(_("Device to forget: {device}").format(device=name))
         print(_("What this installation keeps of it goes too: what was uploaded from it, its "
-                "last sync, its connection log, the maps of your own copied to it and "
+                "last sync, its connection log, your own maps copied to it and "
                 "the copies of its diagnostic files. Its next sync with this program will be a "
                 "first sync again."))
         if kept.pending:
@@ -1827,7 +1826,7 @@ def _queue_file_words(found, makers=None) -> str:
     elif not_whole.problem is Problem.CRC:
         parts.append(_("damaged: the CRC does not match"))
     else:
-        parts.append(_("damaged: {count} B after the end are no FIT file").format(
+        parts.append(_("damaged: {count} B after the end do not belong to a FIT file").format(
             count=not_whole.after))
     return " · ".join(parts)
 
@@ -2064,11 +2063,12 @@ def _print_not_installed(untaken) -> None:
         print("  " + _update_line(u))
         when = full_time(datetime.fromtimestamp(u.copied_at))
         if u.changed_on_device:
-            print("      " + _("Copied {when}; the device was unplugged since, changed or refused "
-                               "the file and has not installed it.").format(when=when))
+            print("      " + _("Copied {when}; since then the device has been unplugged, has "
+                               "changed or refused the file, and has not installed it.").format(
+                when=when))
         else:
-            print("      " + _("Copied {when}; the device was unplugged since and has not "
-                               "installed it (the file is still on it).").format(when=when))
+            print("      " + _("Copied {when}; since then the device has been unplugged and has "
+                               "not installed it (the file is still on it).").format(when=when))
 
 
 def _print_present(present, verbose: bool) -> None:
@@ -2110,7 +2110,8 @@ def cmd_updates(args) -> int:
     resp = client.software_updates(dev.raw, include_reinstalls=args.reinstalls)
     # Only reads the device.
     items = upd.offered(st, resp, dev)
-    if _read_hidden(st, dev, upd.hidden_needed(items), "updates go there"):
+    hidden, inside = upd.session_folders(st, items)
+    if _read_hidden(st, dev, hidden, "updates go there", inside=inside):
         items = upd.offered(st, resp, dev)  # compared again with what was read
     if not args.reinstalls:
         items = [u for u in items if not u.is_reinstall]
@@ -2155,6 +2156,8 @@ def cmd_updates(args) -> int:
                 print("      " + older)
             if u.hidden_unread:
                 print("      " + upd.not_installed_here_text(u))
+            if u.refused_inside:
+                print("      " + upd.not_installed_inside_text(u))
             note = _copied_note(u)
             if note:
                 print("      " + note)
@@ -2183,6 +2186,31 @@ def cmd_updates(args) -> int:
     refused = [u for u in chosen if u.hidden_unread]
     chosen = [u for u in chosen if not any(u is r for r in refused)]
     _print_hidden(refused, extra if args.install == ["all"] else [], lines=True)
+    # Nor to a folder the device hides inside a folder that is seen: the others go on. Tried
+    # with --hidden-folder-trial: only those, each named.
+    trial = getattr(args, "hidden_folder_trial", False)
+    inside = [u for u in chosen if (u.folder_hidden is not None if trial else u.refused_inside)]
+    if trial:
+        if args.install == ["all"]:
+            # TRANSLATORS: `openexpress updates --install all --hidden-folder-trial`
+            print(_("--hidden-folder-trial takes the part numbers of the updates to try, not "
+                    "“all”."), file=sys.stderr)
+            return 2
+        for u in [u for u in chosen if u.folder_hidden is None and not u.is_metadata]:
+            # TRANSLATORS: `openexpress updates --install PART --hidden-folder-trial`
+            print(_("Not tried: {name} {version} does not go to a folder the device hides "
+                    "inside GARMIN.").format(name=u.title, version=u.version))
+            refused.append(u)
+        tried = {u.part_number.upper() for u in inside}
+        chosen = [u for u in chosen if u.folder_hidden is not None or (
+            u.is_metadata and u.part_number.upper().removesuffix("-META") in tried)]
+        if not inside:
+            return 1
+    else:
+        for u in inside:
+            print(upd.not_installed_inside_text(u))
+        chosen = [u for u in chosen if not u.refused_inside]
+        refused += inside
     # Never an older version over the device's own, unless it is the same file.
     older = [u for u in chosen if upd.reinstall_refused(u)]
     for u in older:
@@ -2226,6 +2254,15 @@ def cmd_updates(args) -> int:
     for u in upd.sort_for_install(chosen):
         print(f"  {u.part_number} {u.version}  {u.title}{_beta_mark(u)}  ({human_size(u.size)}) "
               f"-> {u.device_path}")
+        if trial and u.folder_hidden is not None:
+            # TRANSLATORS: `openexpress updates --install PART --hidden-folder-trial`, under
+            # the update; {folder}: the folder the device hides; {copies}: a folder on this
+            # computer
+            print("      " + _("a trial: written into {folder}, which the device hides, over a "
+                               "direct USB connection; the file there now is copied to "
+                               "{copies} first and put back if the new one is not written "
+                               "whole; the first refusal stops the trial").format(
+                folder=u.folder_hidden, copies=_hidden_trial_folder()))
     print(_("Space: {needed} needed, {free} free").format(needed=human_size(need),
                                                          free=human_size(free)))
     eulas = sorted({u.eula_url for u in chosen if u.eula_url})
@@ -2241,10 +2278,19 @@ def cmd_updates(args) -> int:
                        "(this means you accept the licenses above)."))
         return 0
     with _progress() as progress:
+        tried = {"hidden_trial": _hidden_trial_folder()} if trial else {}
         rep = upd.install(chosen, st, session=client.http, progress=progress,
-                          unit_id=dev.unit_id, offered=items)
+                          unit_id=dev.unit_id, offered=items, **tried)
     n = len(rep.written)
     print("\n" + ngettext("Copied {count} file.", "Copied {count} files.", n).format(count=n))
+    for u, kept in rep.kept:
+        # TRANSLATORS: `openexpress updates --install PART --hidden-folder-trial --apply`, after
+        # the copy; {path}: the copy on this computer of the file the update replaced
+        print(_("The file {name} replaced is kept at {path} (SHA-256 {sha256}).").format(
+            name=u.title, path=kept.path, sha256=kept.sha256))
+    if rep.failed:
+        print(upd.failed_text(rep))
+        refused += [u for u, _why in rep.failed]
     if n and getattr(st, "mass_storage", False) and not service.eject_drive(st):
         return 1  # the cable must stay in: no steps that begin with unplugging it
     if n:
@@ -2264,6 +2310,12 @@ def _drive_synced(client, dev) -> bool:
     except ApiError:
         info = None
     return service.drive_sync_refusal(dev, info) is None
+
+
+def _hidden_trial_folder() -> Path:
+    """Where `updates --hidden-folder-trial` keeps the files it replaced on the device, out of
+    the cache (which openExpress clears): until removed by hand."""
+    return paths.data_dir() / "hidden-folder-trial"
 
 
 def _loses_data_on_update(client, dev) -> bool:
@@ -2288,6 +2340,11 @@ def _load_maps(args, client, own: bool = False):
     from openexpress import maps as mp
 
     st, dev = open_device(args)
+    # The device's card in this computer's reader stands in for the card over MTP, for this
+    # command alone: a session kept open for the next request never keeps it.
+    st.card_volume = None
+    if getattr(args, "card_reader", None):
+        st.card_volume = cards.reader_card(dev, Path(args.card_reader))
     if args.path:  # a folder (maybe a copy): the universal map service
         all_maps, listed = mp.read_maps(client.universal_maps(dev.raw))
         mp.apply_restrictions(all_maps)  # no account for a folder: a restricted map is marked
@@ -2300,9 +2357,9 @@ def _load_maps(args, client, own: bool = False):
             # A command on maps of your own does not depend on it: Garmin's maps are none,
             # so their names alone are kept apart (ownmaps.is_garmin_name).
             all_maps, listed = [], 0
-    mp.mark_waiting(st, all_maps)
+    mp.mark_waiting(st, all_maps, dev)
     if _read_hidden(st, dev, mp.hidden_needed(all_maps), "the maps' files are there"):
-        mp.mark_waiting(st, all_maps)  # marked again with what was read
+        mp.mark_waiting(st, all_maps, dev)  # marked again with what was read
     return st, dev, all_maps, listed
 
 
@@ -2416,7 +2473,7 @@ def cmd_maps(args) -> int:
         return _maps_remove_own(args, dev, st, all_maps)
     if not listed:
         # One message instead of an empty list, as for a device without media.
-        if args.maps_cmd in ("install", "remove"):
+        if args.maps_cmd in ("install", "remove", "move"):
             raise mp.MapError(mp.no_maps_message())
         print(mp.no_maps_message())
         return 0
@@ -2426,7 +2483,8 @@ def cmd_maps(args) -> int:
         print((_("Maps for {device} (all):") if args.all
                else _("Maps for {device} (installed):")).format(device=dev.description))
         for m in sorted(shown, key=lambda m: (m not in on_device, m.map_type, m.name)):
-            print(f"  {m.name:48} {m.version:>9}  {human_size(m.size):>9}  {m.status}")
+            print(f"  {m.name:48} {m.version:>9}  {human_size(m.size):>9}  {m.status}"
+                  + _map_place(m))
             if (note := mp.restriction_note(m)) is not None:
                 print("    " + note)
             if m.hidden_folder is not None and not m.unseen:
@@ -2437,6 +2495,11 @@ def cmd_maps(args) -> int:
                                   "{count} more maps are available (openexpress maps --all).",
                                   n).format(count=n))
         print(_("Free space on the device: {size}").format(size=human_size(st.free_space())))
+        if (card := cards.card_of(st, dev)) is not None:
+            # TRANSLATORS: `openexpress maps`, after the free space on the device; {size}: a
+            # size, e.g. 120.5 GB
+            print(_("Free space on its memory card: {size}").format(
+                size=human_size(card.free_space())))
         own = ownmaps.list_own(dev, st, all_maps)
         if own:
             print("\n" + _("Own maps (not from Garmin):"))
@@ -2448,9 +2511,14 @@ def cmd_maps(args) -> int:
         return 0
 
     if args.maps_cmd == "update":
-        targets = [m for m in all_maps if m.update_available and m.hidden_folder is None]
+        def kept_from(m) -> bool:  # a folder the device hides; on both storages, or a card not in
+            # the device (a map on the card is updated there)
+            return ((m.hidden_folder or m.folder_hidden) is not None
+                    or m.location in (cards.BOTH, cards.CARD_OUT))
+
+        targets = [m for m in all_maps if m.update_available and not kept_from(m)]
         for m in all_maps:
-            if m.update_available and m.hidden_folder is not None:
+            if m.update_available and kept_from(m):
                 print(mp.cannot_install_message(m))
         incomplete = sum(1 for m in all_maps if m.incomplete)
         for m in all_maps:
@@ -2474,6 +2542,177 @@ def cmd_maps(args) -> int:
     return code
 
 
+def _map_place(m) -> str:
+    """After a map's status in `openexpress maps`: where it is, when not on the device's own
+    storage alone."""
+    if m.location == cards.CARD:
+        # TRANSLATORS: `openexpress maps`, after a map's status: the map is on the memory card
+        return "  " + _("(memory card)")
+    if m.location == cards.BOTH:
+        # TRANSLATORS: `openexpress maps`, after a map's status: its files are on the device's
+        # own storage and on its memory card
+        return "  " + _("(device and memory card)")
+    if m.location == cards.CARD_OUT:
+        # TRANSLATORS: `openexpress maps`, after a map's status: on the memory card, which is
+        # not in the device now
+        return "  " + _("(memory card, not in the device)")
+    return ""
+
+
+def _move_map(args, client, st, dev, all_maps, m) -> int:
+    """`maps move NAME --to internal|card`: the plan (each file moved, copied or checked, and
+    what stays), then with --apply the move. MapError when it is refused."""
+    from openexpress import maps as mp
+
+    steps = mp.move_plan(m, all_maps, st, dev, args.to)
+    if refused := mp.move_refusals(m, steps, args.to):
+        raise mp.MapError(refused[0])
+    card = cards.card_of(st, dev)
+    target = card if args.to == cards.CARD else st
+    if args.to == cards.CARD:
+        # TRANSLATORS: `openexpress maps move --to card`; {name}: the map, {count}: its files
+        msg = ngettext("Moving map {name} to the memory card: {count} file",
+                       "Moving map {name} to the memory card: {count} files", len(steps))
+    else:
+        # TRANSLATORS: `openexpress maps move --to internal`; {name}: the map, {count}: its files
+        msg = ngettext("Moving map {name} to the device: {count} file",
+                       "Moving map {name} to the device: {count} files", len(steps))
+    print(msg.format(name=m.name, count=len(steps)))
+    for s in steps:
+        if s.copy:
+            print(f"  > {s.target_path}  {human_size(s.file.size)}"
+                  + ("  " + _("(then removed from where it was)") if s.delete else ""))
+        elif s.verify:
+            # TRANSLATORS: in the plan of a map move: a file already where the map goes (a map on
+            # both storages), checked before the other copy is removed
+            checked = _("(there already, checked)")
+            print(f"  = {s.target_path}  {human_size(s.file.size)}  {checked}")
+        else:
+            # TRANSLATORS: in the plan of a map move: a shared file already where the map goes
+            print(f"  = {s.target_path}  {human_size(s.file.size)}  " + _("(there already)"))
+        if not s.copy and s.delete:
+            print(f"  - {s.source_path}")
+    # TRANSLATORS: in the plan of a map move: its unlock and search files, which stay on the
+    # device's own storage wherever the map is, and shared layers, which stay where they are
+    print("  " + _("Its unlock and search files, and terrain it shares with other maps, stay "
+                   "where they are."))
+    print(_("Space needed where it goes: {needed} ({free} free)").format(
+        needed=human_size(mp.move_space(steps)), free=human_size(target.free_space())))
+    if getattr(args, "download", False):
+        # TRANSLATORS: in the plan of `maps move --download`
+        print(_("Its files are downloaded again from Garmin, not read off the device."))
+    if not args.apply:
+        print(_("Dry run: nothing was read, written or removed. Add --apply."))
+        return 0
+    with _progress() as progress:
+        rep = mp.move(m, all_maps, st, dev, args.to, session=client.http if client else None,
+                      url_salt=load_consumer().url_salt if client else None, progress=progress,
+                      source=mp.FROM_DOWNLOAD if getattr(args, "download", False)
+                      else mp.FROM_DEVICE)
+    # TRANSLATORS: after `openexpress maps move --apply`; labels and numbers, so that no
+    # plural form is needed
+    print(_("Copied: {count}").format(count=len(rep.copied)))
+    if rep.verified:
+        print(_("There already and checked: {count}").format(count=len(rep.verified)))
+    print(_("Removed from where it was: {count}").format(count=len(rep.removed)))
+    _eject_reader_card(st)
+    print(_("The map will be loaded from where it is now after the device is unplugged."))
+    return 0
+
+
+def _change_map_on_card(args, client, st, dev, all_maps, m, to) -> int:
+    """`maps install --to card`, or `maps install` and `update` of a map on the memory card:
+    its plan (each file where it goes, a shared layer left where it is, the space on each
+    storage), then with --apply the install. MapError when it is refused."""
+    from openexpress import maps as mp
+
+    if not mp.can_install(m):
+        raise mp.MapError(mp.cannot_install_message(m))
+    plan = mp.card_plan(m, all_maps, st, dev)
+    if refused := mp.card_refusals(m, plan):
+        raise mp.MapError(refused[0])
+    removing = mp.removal_list(all_maps, m, rewriting=True)
+    need = mp.card_space(m, plan, st, dev, removing)
+    card = cards.card_of(st, dev)
+    if m.installed:
+        # TRANSLATORS: `openexpress maps update` of a map on the memory card; {name}, {version}:
+        # the map, {count}: its files, {size}: the download
+        msg = ngettext("Updating map {name} {version} on the memory card: {count} file, "
+                       "download {size}",
+                       "Updating map {name} {version} on the memory card: {count} files, "
+                       "download {size}", len(m.files))
+    else:
+        # TRANSLATORS: `openexpress maps install --to card`; {name}, {version}: the map,
+        # {count}: its files, {size}: the download
+        msg = ngettext("Installing map {name} {version} on the memory card: {count} file, "
+                       "download {size}",
+                       "Installing map {name} {version} on the memory card: {count} files, "
+                       "download {size}", len(m.files))
+    print(msg.format(name=m.name, version=m.version, count=len(m.files),
+                     size=human_size(m.size)))
+    for p in plan:
+        if p.storage is None:
+            # TRANSLATORS: in the plan of a map install on the memory card: a file other maps
+            # share (a terrain layer), left on the storage it is on
+            print(f"  = {p.path}  {human_size(p.file.size)}  " + _("(shared, stays where it is)"))
+        elif p.where == cards.CARD:
+            print(f"  + {p.path}  {human_size(p.file.size)}  " + _("(memory card)"))
+        elif p.path.casefold().endswith(".sid") and cards.may_go_to_card(p.path, dev):
+            # TRANSLATORS: in the plan of a map install on the memory card: a search or type
+            # file whose kind, read once it is downloaded, decides where it goes
+            either = _("(the device or the memory card, by its kind)")
+            print(f"  + {p.path}  {human_size(p.file.size)}  {either}")
+        else:
+            print(f"  + {p.path}  {human_size(p.file.size)}")
+    for p in removing:
+        print(f"  - {p}")
+    # TRANSLATORS: in the plan of a map install on the memory card; {internal}, {card}: the
+    # space needed on each, {internal_free}, {card_free}: free there
+    print(_("Space needed on the device {internal} ({internal_free} free), on the memory card "
+            "{card} ({card_free} free)").format(
+        internal=human_size(need[cards.INTERNAL]), internal_free=human_size(st.free_space()),
+        card=human_size(need[cards.CARD]), card_free=human_size(card.free_space())))
+    for e in m.eula_urls:
+        print(_("License (EULA): {url}").format(url=e))
+    if not args.apply:
+        print(_("Dry run: nothing was downloaded or written. Add --apply."))
+        return 0
+    with _progress() as progress:
+        rep = mp.install(
+            m, all_maps, st,
+            activate=lambda ident: client.activate_maps(dev.raw, [ident]),
+            session=client.http, url_salt=_url_salt(), progress=progress, device=dev, to=to)
+    print(ngettext("Wrote {count} map file.", "Wrote {count} map files.",
+                   len(rep.written)).format(count=len(rep.written)))
+    # TRANSLATORS: openexpress maps install --to card, after the files: how many of them went to
+    # the memory card; a label and a number, so that no plural form is needed
+    print(_("On the memory card: {count}").format(count=len(rep.on_card)))
+    if rep.shared:
+        # TRANSLATORS: openexpress maps install --to card: shared layers left where they were; a
+        # label and a number
+        print(_("Shared files left where they are: {count}").format(count=len(rep.shared)))
+    print(_("Unlock files written: {count}").format(count=len(rep.unlocks)))
+    _eject_reader_card(st)
+    print(_("The map will be loaded after the device is unplugged."))
+    return 0
+
+
+def _eject_reader_card(st) -> None:
+    """The device's card in this computer's reader, written: ejected, to be put back."""
+    card = getattr(st, "card_volume", None)
+    if card is None:
+        return
+    st.card_volume = None  # ejected: the card is the device's again once it is back
+    if cards.eject(card):
+        # TRANSLATORS: after a map was written to the memory card in the computer's card reader
+        print(_("The memory card was ejected: put it back in the device."))
+    else:
+        # TRANSLATORS: after a map was written to the memory card in the computer's card reader;
+        # {volume}: the card's name
+        print(_("Eject the memory card {volume}, then put it back in the device.").format(
+            volume=Path(card.root).name))
+
+
 def print_map_cleanup(st, dev, all_maps) -> None:
     """The old files Garmin's cleanup rules would take: listed with the plan of `maps install`,
     `update` and `remove`, in a dry run and with --apply; never removed."""
@@ -2495,23 +2734,26 @@ def change_map(args, client, st, dev, all_maps, m) -> int:
     from openexpress import maps as mp
 
     code = 0
+    if args.maps_cmd == "move":
+        return _move_map(args, client, st, dev, all_maps, m)
     if args.maps_cmd == "remove":
         if (why := mp.removal_refused(m)) is not None:
             raise mp.MapError(why)  # refused before anything is listed
         if not m.can_uninstall:
             # Refused before anything is listed: the files are not going to be removed.
             raise mp.MapError(mp.cannot_remove_message(m))
-        files = mp.removal_list(all_maps, m, rewriting=False)
+        places = mp.removal_places(m, all_maps, st, dev)
         print(ngettext("Removing map {name}: {count} file",
-                       "Removing map {name}: {count} files", len(files)).format(
-            name=m.name, count=len(files)))
-        for p in files:
-            print(f"  - {p}  ({human_size(st.size(p))})")
+                       "Removing map {name}: {count} files", len(places)).format(
+            name=m.name, count=len(places)))
+        for where, p in places:
+            print(f"  - {p}  ({human_size(where.size(p))})"
+                  + ("" if where is st else "  " + _("(memory card)")))
         if not args.apply:
             print(_("Dry run: nothing was changed. Add --apply."))
             return code
         with _progress() as progress:
-            removed = mp.uninstall(m, all_maps, st, progress=progress)
+            removed = mp.uninstall(m, all_maps, st, progress=progress, device=dev)
         print(ngettext("Removed {count} file.", "Removed {count} files.",
                        len(removed)).format(count=len(removed)))
         return code
@@ -2519,6 +2761,9 @@ def change_map(args, client, st, dev, all_maps, m) -> int:
     if m.waiting == mp.WAIT_INSTALL:
         # Refused before anything is listed: it is written already.
         raise mp.MapError(mp.waiting_message(m))
+    to = getattr(args, "to", None)
+    if mp.install_target(m, to) == cards.CARD:
+        return _change_map_on_card(args, client, st, dev, all_maps, m, to)
     trial = getattr(args, "hidden_folder_trial", False)
     hidden = m.hidden_folder is not None
     removing = mp.removal_list(all_maps, m, rewriting=True)
@@ -2727,7 +2972,9 @@ def _apps_order(args, dev, st, state) -> int:
     for line, indented in ciq.describe_order(plan, None if args.all else 10):
         print(("  " if indented else "") + line)
     _print_app_list_size(len(plan.entries), sum(1 for a in state.apps if not a.pending))
-    print("  " + _("the same apps with the same flags; only the order changes"))
+    # TRANSLATORS: "as it is" / "each as it is now": each app stays turned on or off and
+    # marked as a favourite or not in the app list, as it was
+    print("  " + _("the same apps, each as it is now; only the order changes"))
     if not args.apply:
         print(ciq.app_list_copy_note(dev, st))
         print(_("Dry run: nothing was changed. Add --apply."))
@@ -2749,15 +2996,16 @@ def _remove_app_directly(args, dev, st, state, app, api) -> int:
     if settings:
         print("  " + _("and its settings file, if the device has one: {path}").format(
             path=settings))
-    print("  " + _("The device does not show this file to ordinary file access. openExpress "
-                   "will delete it over a direct USB connection; the device disappears from "
-                   "the file manager for a moment."))
+    print("  " + _("This file is hidden from the file manager. openExpress will delete it "
+                   "over a direct USB connection; the device disappears from the file "
+                   "manager for a moment."))
     preview = ciq.preview_removal(state, app)
     _print_app_list_size(preview.entries, preview.on_device)
     if preview.pending or not preview.kept:
         raise _app_list_mismatch()
-    print("  " + _("every other app on the device is kept, in the same order and with the "
-                   "same flags"))
+    # TRANSLATORS: "as it is" / "each as it is now": each app stays turned on or off and
+    # marked as a favourite or not in the app list, as it was
+    print("  " + _("every other app on the device is kept as it is, in the same order"))
     kind = ciq.app_type_name(app.app_type) or app.app_type
     print("  " + _("to be removed: {name} ({type})").format(name=app.name, type=kind))
     if not args.apply:
@@ -2815,7 +3063,9 @@ def _print_in_bin_preview(preview) -> None:
         print("  " + ngettext("{count} more app is registered and waits for the device",
                               "{count} more apps are registered and wait for the device",
                               preview.pending).format(count=preview.pending))
-    print("  " + (_("every app on the device is kept, in the same order and with the same flags")
+    # TRANSLATORS: "as it is" / "each as it is now": each app stays turned on or off and
+    # marked as a favourite or not in the app list, as it was
+    print("  " + (_("every app on the device is kept as it is, in the same order")
                   if preview.kept else
                   _("Warning: the new list does not match the apps on the device")))
     for name, app_type, disabled in preview.new:
@@ -2962,10 +3212,10 @@ def cmd_apps(args) -> int:
                                "yet. The app will be queued in Garmin Connect and installed by "
                                "the phone or Garmin Express.").format(name=a.name))
             elif dirs[a.app_id] == ciq.DIRECT:
-                print("  " + _("{name}: the device does not show the app folder {path} to "
-                               "ordinary file access. openExpress will write the app over a "
-                               "direct USB connection; the device disappears from the file "
-                               "manager for a moment.").format(name=a.name, path=folder))
+                print("  " + _("{name}: the app folder {path} is hidden from the file manager. "
+                               "openExpress will write the app over a direct USB connection; "
+                               "the device disappears from the file manager for a "
+                               "moment.").format(name=a.name, path=folder))
             elif dirs[a.app_id] == ciq.MISSING:
                 print("  " + _("{name}: the app folder {path} does not exist on the device. "
                                "openExpress will try to create it; if the device refuses, the "
@@ -3150,8 +3400,7 @@ def _primary_role(wearable: bool) -> _PrimaryRole:
         })
 
 
-# The days of `openexpress solar`: a week by default, at most a month.
-SOLAR_DAYS = 7
+# The days of `openexpress solar`: a week by default (readings.SOLAR_DAYS), at most a month.
 SOLAR_MOST_DAYS = 31
 
 
@@ -3568,14 +3817,14 @@ def match_music_paths(device_paths: list[str], roots: list[str], patterns: list[
 def cmd_music(args) -> int:
     from openexpress import music
 
-    st, dev = open_device(args)
     cmd = args.music_cmd or "list"
-    if cmd == "remove":
+    if cmd == "remove":  # a mistake of the command line: said before the device is opened
         bad = [p for p in args.paths if len(p.strip()) < MIN_MUSIC_PATTERN]
         if bad:
             print(_("Error: each TEXT must have at least {count} characters: {texts}").format(
                 count=MIN_MUSIC_PATTERN, texts=", ".join(repr(p) for p in bad)), file=sys.stderr)
             return 1
+    st, dev = open_device(args)
     kinds = music.supported_kinds(dev)
     if not kinds:
         if cmd != "list":
@@ -3607,12 +3856,20 @@ def cmd_music(args) -> int:
     if cmd == "add":
         tracks = music.scan([Path(p) for p in args.paths], dev, forced_kind=args.kind)
         plan = music.plan_copy(tracks, dev, st)
-        print(ngettext("Found {count} playable file; {to_copy} to copy ({size}), "
-                       "{already} already on the device.",
-                       "Found {count} playable files; {to_copy} to copy ({size}), "
-                       "{already} already on the device.", len(tracks)).format(
-            count=len(tracks), to_copy=len(plan.to_copy), size=human_size(plan.size),
-            already=len(plan.already)))
+        if plan.already:
+            print(ngettext("Found {count} playable file; {to_copy} to copy ({size}), "
+                           "{already} already on the device.",
+                           "Found {count} playable files; {to_copy} to copy ({size}), "
+                           "{already} already on the device.", len(tracks)).format(
+                count=len(tracks), to_copy=len(plan.to_copy), size=human_size(plan.size),
+                already=len(plan.already)))
+        else:
+            # TRANSLATORS: `openexpress music add`, when none of the files found is on the device
+            # yet ({to_copy}: how many will be copied, {size}: their size)
+            print(ngettext("Found {count} playable file; {to_copy} to copy ({size}).",
+                           "Found {count} playable files; {to_copy} to copy ({size}).",
+                           len(tracks)).format(count=len(tracks), to_copy=len(plan.to_copy),
+                                               size=human_size(plan.size)))
         for t, dest in plan.to_copy[: (None if args.verbose else 15)]:
             note = music.replaced_note(plan, t, dest)
             print(f"  ~ {dest}  {note}" if note else f"  + {dest}")
@@ -3700,15 +3957,18 @@ def cmd_install_desktop(args) -> int:
                 "background sync in the window: main menu, Preferences, Background Sync."))
         return 0
 
+    def removed_line(path) -> str:
+        # TRANSLATORS: CLI install-desktop --remove: a file of the launcher, icon or service
+        # that was removed ({path})
+        return (_("Removed {path}") if args.apply
+                # TRANSLATORS: CLI install-desktop --remove, dry run: a file of the launcher,
+                # icon or service that would be removed ({path})
+                else _("Would remove {path}")).format(path=path)
+
     if args.remove:
         removed = desktop.uninstall(dry_run=not args.apply)
         for p in removed:
-            # TRANSLATORS: CLI install-desktop --remove: a file of the launcher, icon or service
-            # that was removed ({path})
-            print((_("Removed {path}") if args.apply
-                   # TRANSLATORS: CLI install-desktop --remove, dry run: a file of the launcher,
-                   # icon or service that would be removed ({path})
-                   else _("Would remove {path}")).format(path=p))
+            print(removed_line(p))
         if not removed:
             # TRANSLATORS: CLI install-desktop --remove: no launcher, icon or service file was found
             print(_("Nothing to remove."))
@@ -3717,13 +3977,12 @@ def cmd_install_desktop(args) -> int:
         elif any(p.name == desktop.SERVICE for p in removed):
             print(_("The background sync service was stopped and disabled."))
         return 0
-    if desktop.flatpak_installed() and not args.force:
-        print(_("The Flatpak of openExpress is installed and already provides the menu entry. "
-                "A second entry with the same name would hide it. Use --force to install "
-                "anyway, or turn on background sync in the Flatpak window."), file=sys.stderr)
-        return 1
     if args.apply:
         _build_translations()
+    # What an older version from source wrote under the Flatpak's ID goes first: its own entries
+    # and icons only (desktop.leftovers).
+    for p in desktop.remove_leftovers(dry_run=not args.apply):
+        print(removed_line(p))
     written = desktop.install(dry_run=not args.apply)
     for p in written:
         # TRANSLATORS: CLI install-desktop: a file of the launcher, icon or service that was
@@ -3780,6 +4039,16 @@ ARGPARSE_MESSAGES = [
 ]
 
 
+class _Commands(argparse._SubParsersAction):
+    """The commands of a parser: each one's own --help page opens with the words the list of
+    commands gives it."""
+
+    def add_parser(self, name, **kwargs):
+        if "help" in kwargs:
+            kwargs.setdefault("description", kwargs["help"])
+        return super().add_parser(name, **kwargs)
+
+
 def build_parser() -> argparse.ArgumentParser:
     from openexpress import platform
 
@@ -3788,6 +4057,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="openexpress",
         description=_("Unofficial Linux app for Garmin watches and bike computers."),
+        # TRANSLATORS: CLI, at the end of "openexpress --help"; setup, login, logout and --apply
+        # are a command and an option, not to be translated
+        epilog=_("Commands that change anything only say what they would do; add --apply to do "
+                 "it. Only setup, login and logout change openExpress's own settings and "
+                 "sign-in at once."),
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     # TRANSLATORS: CLI help of -v/--verbose: print more details
@@ -3796,14 +4070,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help=_("interface language, e.g. {examples}").format(
                        examples=", ".join(i18n.available_languages())))
     _device_options(p)
-    sub = p.add_subparsers(dest="cmd")
+    sub = p.add_subparsers(dest="cmd", metavar="COMMAND", action=_Commands)
     if platform.has_desktop():
         # Without a command the application window opens (as from the application menu), and
         # it is logged as the window. After add_subparsers: it would set "cmd" to None. Where
         # there is no window (macOS) "cmd" stays None: the commands are listed (_main).
         p.set_defaults(func=cmd_gui, cmd="gui")
 
-    s = sub.add_parser("setup", help=_("configuration: OAuth1 key, environment, locale"))
+    # TRANSLATORS: help of `openexpress setup` in the list of commands: what it sets; "the copy
+    # of the device's diagnostic files" is its option --diagnostics-copy
+    s = sub.add_parser("setup", help=_("the application key from the Garmin Express installer, "
+                                       "and the settings: Garmin's servers, the languages, the "
+                                       "copy of the device's diagnostic files"))
     s.add_argument("--from-installer", metavar="GarminExpress.exe",
                    help=_("read the needed data from the Garmin Express installer for Windows "
                           "(GarminExpress.exe from garmin.com); it is only read, nothing is "
@@ -3816,12 +4094,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help=_("the application key of Garmin Express (its OAuth1 consumer key); "
                           "only together with --secret"))
     s.add_argument("--secret",
-                   help=_("OAuth1 consumer secret of Garmin Express; only together with --key"))
+                   help=_("the application secret of Garmin Express (its OAuth1 consumer "
+                          "secret); only together with --key"))
     s.add_argument("--environment", choices=sorted(ENVIRONMENTS),
                    help=_("Garmin servers to use: production (default) or china"))
-    # TRANSLATORS: CLI help of "setup --locale": "for example" ({example}: a locale code such as
-    # pl_PL)
-    s.add_argument("--locale", help=_("e.g. {example}").format(example="pl_PL"))
+    # TRANSLATORS: CLI help of "setup --locale" ({example}: a locale code such as pl_PL)
+    s.add_argument("--locale", help=_("the language to request from Garmin's servers (by "
+                                      "default the program's), e.g. {example}").format(
+        example="pl_PL"))
     s.add_argument("--ui-language", choices=i18n.available_languages() + ["system"],
                    help=_("language of this program (\"system\": follow the system locale)"))
     s.add_argument("--diagnostics-copy", choices=("on", "off"),
@@ -3842,8 +4122,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("report", help=_("device report for GitHub, without serial numbers"))
     s.add_argument("--log", action="store_true",
-                   help=_("print the last lines of the log file instead, for the form "
-                          "(filtered)"))
+                   help=_("print the last lines of the log instead, filtered, for the “Log” "
+                          "field of the report form"))
     s.set_defaults(func=cmd_report)
 
     s = sub.add_parser("info", help=_("information about the connected device"))
@@ -3851,9 +4131,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_info)
 
     s = sub.add_parser("files", help=_("files on the device by data type"))
-    s.add_argument("--type", help=_("e.g. {example} (activities)").format(example="FIT_TYPE_4"))
+    s.add_argument("--type", help=_("only this data type, each file listed, e.g. {example} "
+                                    "(activities)").format(example="FIT_TYPE_4"))
     s.add_argument("--limit", type=int, default=0, metavar="N",
-                   help=_("show only the last N files"))
+                   # TRANSLATORS: help of --limit of `openexpress files`; "--type" and "-v" are
+                   # options, not to be translated; -v is given before the command
+                   help=_("with --type, or -v before the command: only the last N files"))
     s.set_defaults(func=cmd_files)
 
     from openexpress.activities import PAGE
@@ -3868,7 +4151,7 @@ def build_parser() -> argparse.ArgumentParser:
     backups_help = _("folder of the backups (default: {path})").format(
         path=paths.shown_path(paths.default_backup_dir()))
     s.add_argument("--backups", metavar="DIR", help=backups_help)
-    asub = s.add_subparsers(dest="activities_cmd")
+    asub = s.add_subparsers(dest="activities_cmd", action=_Commands)
     m = asub.add_parser("export", help=_("write activities as GPX files"))
     m.add_argument("names", nargs="+", metavar="NAME",
                    help=_("the file name of an activity, as the list of activities shows it"))
@@ -3880,7 +4163,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_activities)
 
     s = sub.add_parser("fit", help=_("FIT files on this computer"))
-    fsub = s.add_subparsers(dest="fit_cmd", metavar="inspect", required=True)
+    fsub = s.add_subparsers(dest="fit_cmd", metavar="inspect", required=True, action=_Commands)
     m = fsub.add_parser("inspect", help=_("what a FIT file holds: its type, its messages and "
                                           "whether it is whole"))
     m.add_argument("file", metavar="FILE", help=_("a FIT file on this computer"))
@@ -3896,10 +4179,13 @@ def build_parser() -> argparse.ArgumentParser:
                           "manager for a moment)"))
     s.add_argument("--dumps", action="store_true", help=_("also copy the memory dumps"))
     s.add_argument("--free-space", action="store_true",
-                   help=_("only what can be freed on the device: the older memory dumps "
-                          "(copied to this computer first where they fit) and the files of "
-                          "updates it did not install; with --apply they are removed (not with "
-                          "--dumps or --crash-logs)"))
+                   # TRANSLATORS: help of `openexpress diagnostics --free-space`: "free up space"
+                   # as the button Free Up Space of the window; "--apply", "--dumps" and
+                   # "--crash-logs" are options, not to be translated
+                   help=_("free up space on the device: older memory dumps (copied to this "
+                          "computer first where they fit) and files of updates it did not "
+                          "install; with --apply they are removed (not with --dumps or "
+                          "--crash-logs)"))
     s.set_defaults(func=cmd_diagnostics, _parser=s)
 
     s = sub.add_parser("login", help=_("sign in to Garmin Connect"))
@@ -3924,7 +4210,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("devices", help=_("the devices this installation has seen"))
     s.add_argument("--forget", type=int, metavar="N",
                    help=_("forget device number N of the list and what this installation "
-                          "keeps of it (its sync state, its last sync)"))
+                          "keeps of it, as Forget Device in the window does"))
     s.add_argument("--discard-pending", action="store_true",
                    help=_("with --forget: also when files of it have not been uploaded yet "
                           "(they are lost)"))
@@ -3936,7 +4222,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("status", help=_("the sign-in, the devices connected, their last sync and "
                                         "updates, from what this installation knows"))
     s.add_argument("--online", action="store_true",
-                   help=_("also ask Garmin Connect and Garmin's update server now"))
+                   # TRANSLATORS: help of `openexpress status --online`; "answers from a moment
+                   # ago": those openExpress keeps for some minutes, so that they are not asked
+                   # again at once
+                   help=_("also ask Garmin Connect and Garmin's update server, or use their "
+                          "answers from a moment ago"))
     s.set_defaults(func=cmd_status)
 
     # TRANSLATORS: CLI help of the whoami command, which shows the signed-in Garmin Connect account
@@ -3946,7 +4236,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("strava", help=_("connect to Strava and upload FIT files to it "
                                         "(your own Strava API application)"))
-    stsub = s.add_subparsers(dest="strava_cmd")
+    stsub = s.add_subparsers(dest="strava_cmd", action=_Commands)
     c = stsub.add_parser("connect", help=_("connect openExpress to your Strava API "
                                            "application (opens a browser)"))
     c.add_argument("--client-id", metavar="ID",
@@ -3961,19 +4251,25 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_strava)
 
     s = sub.add_parser("upload-config",
-                       help=_("upload configuration from the Garmin server (OMT)"))
+                       help=_("what data the device uploads and where, as Garmin's server "
+                              "says (OMT)"))
     s.add_argument("--json", action="store_true",
                    help=_("print the server's whole answer as JSON"))
     s.set_defaults(func=cmd_upload_config)
 
     s = sub.add_parser("sync", help=_("sync with Garmin Connect (dry run by default)"))
-    s.add_argument("--apply", action="store_true", help=_("actually upload and write"))
+    s.add_argument("--apply", action="store_true",
+                   # TRANSLATORS: help of --apply of `openexpress sync` (the description of the
+                   # command above says it is a dry run without it)
+                   help=pgettext("sync --apply", "upload and write"))
     s.add_argument("--all", action="store_true", help=_("upload everything on the first sync"))
     s.add_argument("--upload-only", action="store_true",
                    help=_("only upload; leave what waits in Garmin Connect for the device"))
     s.add_argument("--download-only", action="store_true",
                    help=_("only write what waits in Garmin Connect; upload nothing"))
-    s.add_argument("--type", action="append", help=_("only the given data type (repeatable)"))
+    s.add_argument("--type", action="append",
+                   help=_("upload only this data type, e.g. {example} (repeatable)").format(
+                       example="FIT_TYPE_4"))
     s.add_argument("--include-diagnostics", action="store_true",
                    help=_("also upload device diagnostics and telemetry to Garmin"))
     s.add_argument("--copy-fit-to", metavar="DIR",
@@ -3982,16 +4278,22 @@ def build_parser() -> argparse.ArgumentParser:
                           "instead of the setting of the same name"))
     s.set_defaults(func=cmd_sync)
 
-    s = sub.add_parser("baseline", help=_("mark current files as already uploaded"))
-    s.add_argument("--apply", action="store_true", help=_("mark the files (nothing is uploaded)"))
+    s = sub.add_parser("baseline", help=_("mark the device's files as already uploaded, for the "
+                                          "first sync (nothing is uploaded)"))
+    s.add_argument("--apply", action="store_true",
+                   # TRANSLATORS: help of --apply of `openexpress baseline` (the description of
+                   # the command above says nothing is uploaded)
+                   help=pgettext("baseline --apply", "mark the files"))
     s.set_defaults(func=cmd_baseline)
 
     s = sub.add_parser("backup", help=_("local backup of device data"))
     s.add_argument("--dest", metavar="DIR",
                    help=_("destination directory (default: {path})").format(
                        path=paths.shown_path(paths.default_backup_dir())))
-    s.add_argument("--keep", type=int, default=3, metavar="N",
-                   help=_("how many most recent backups to keep"))
+    keep = 3
+    s.add_argument("--keep", type=int, default=keep, metavar="N",
+                   help=_("how many of the newest backups to keep (default: {count}; 0 keeps "
+                          "them all)").format(count=keep))
     s.add_argument("--apply", action="store_true",
                    help=_("copy the files (and remove backups beyond --keep)"))
     s.set_defaults(func=cmd_backup)
@@ -4004,11 +4306,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--apply", action="store_true",
                    help=_("download the updates chosen with --install and copy them to the "
                           "device, accepting their licenses"))
+    s.add_argument("--hidden-folder-trial", action="store_true",
+                   help=_("a trial: install the updates named with --install into a folder a "
+                          "watch hides inside GARMIN (e.g. Prompts), through openExpress's own "
+                          "USB session, the file there copied to this computer first"))
     s.set_defaults(func=cmd_updates)
 
     s = sub.add_parser("maps", help=_("maps on the device (TopoActive, base maps, CourseView…)"))
     s.add_argument("--all", action="store_true", help=_("also show maps available for download"))
-    msub = s.add_subparsers(dest="maps_cmd")
+    msub = s.add_subparsers(dest="maps_cmd", action=_Commands)
     m = msub.add_parser("install", help=_("install a map"))
     m.add_argument("name", metavar="NAME",
                    help=_("the map's name, or a part of it that only one map has, as maps --all "
@@ -4018,6 +4324,35 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--hidden-folder-trial", action="store_true",
                    help=_("a trial: install a map into a folder the device hides (a car "
                           "navigator's .System), through openExpress's own USB session"))
+    m.add_argument("--to", choices=("internal", "card"),
+                   # TRANSLATORS: CLI help of `maps install --to`; "internal" and "card" are
+                   # values, not to be translated
+                   help=_("where to install a map that is not on the device yet: its own "
+                          "storage (internal, the default) or its memory card (card)"))
+    m.add_argument("--card-reader", metavar="VOLUME",
+                   # TRANSLATORS: CLI help of `--card-reader`; VOLUME is a placeholder
+                   help=_("the device's memory card in this computer's card reader (its "
+                          "volume, e.g. /Volumes/CARD): the map's files are written to it "
+                          "there, faster than through the device, then it is ejected"))
+    m = msub.add_parser("move", help=_("move a map between the device's own storage and its "
+                                       "memory card"))
+    m.add_argument("name", metavar="NAME",
+                   help=_("the map's name, or a part of it that only one map has"))
+    m.add_argument("--to", choices=("internal", "card"), required=True,
+                   # TRANSLATORS: CLI help of `maps move --to`; "internal" and "card" are
+                   # values, not to be translated
+                   help=_("where the map goes: the device's own storage (internal) or its "
+                          "memory card (card); a map on both is kept there alone"))
+    m.add_argument("--download", action="store_true",
+                   help=_("download the map's files again from Garmin rather than reading them "
+                          "off the device (faster on a fast connection); the copy on the device "
+                          "is removed only once the new one is written"))
+    m.add_argument("--card-reader", metavar="VOLUME",
+                   # TRANSLATORS: CLI help of `--card-reader`; VOLUME is a placeholder
+                   help=_("the device's memory card in this computer's card reader (its "
+                          "volume, e.g. /Volumes/CARD): the map's files are written to it "
+                          "there, faster than through the device, then it is ejected"))
+    m.add_argument("--apply", action="store_true", help=_("move the map"))
     m = msub.add_parser("update", help=_("update installed maps"))
     m.add_argument("--apply", action="store_true",
                    help=_("download the updates and write them to the device"))
@@ -4039,7 +4374,7 @@ def build_parser() -> argparse.ArgumentParser:
     wearable_help = _("the primary wearable (steps and sleep in Garmin Connect) instead of the "
                       "primary training device")
     s.add_argument("--wearable", action="store_true", help=wearable_help)
-    psub = s.add_subparsers(dest="primary_cmd")
+    psub = s.add_subparsers(dest="primary_cmd", action=_Commands)
     m = psub.add_parser("set", help=_("make the connected device the primary training device"))
     m.add_argument("--wearable", dest="set_wearable", action="store_true", help=wearable_help)
     m.add_argument("--apply", action="store_true", help=_("change it in your Garmin account"))
@@ -4048,17 +4383,17 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("sensors", help=_("the sensors on the Garmin account and their batteries"))
     s.set_defaults(func=cmd_sensors)
 
-    s = sub.add_parser("solar", help=_("the activity time the sun gained the devices of the "
-                                       "Garmin account that charge from the sun"))
-    s.add_argument("--days", type=_days_back, default=SOLAR_DAYS, metavar="N",
+    s = sub.add_parser("solar", help=_("activity time gained from the sun by the account's "
+                                       "solar-charging devices"))
+    s.add_argument("--days", type=_days_back, default=readings.SOLAR_DAYS, metavar="N",
                    help=_("how many days, today among them ({least}–{most}, {default} by "
                           "default)").format(least=1, most=SOLAR_MOST_DAYS,
-                                             default=SOLAR_DAYS))
+                                             default=readings.SOLAR_DAYS))
     s.set_defaults(func=cmd_solar)
 
     s = sub.add_parser("courses", help=_("the courses on the device, the GPX files waiting for "
                                          "it and its saved locations (experimental)"))
-    csub = s.add_subparsers(dest="courses_cmd")
+    csub = s.add_subparsers(dest="courses_cmd", action=_Commands)
     m = csub.add_parser("add", help=_("copy a GPX file to the device, which makes courses of "
                                       "its tracks and routes (experimental)"))
     m.add_argument("file", metavar="FILE", help=_("a GPX file on this computer"))
@@ -4074,16 +4409,15 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--apply", action="store_true", help=_("remove it from the device"))
     s.set_defaults(func=cmd_courses)
 
-    register_help = _("add the connected device to your Garmin account (experimental; a "
-                      "dry run without --apply)")
-    s = sub.add_parser("register", help=register_help, description=register_help)
+    s = sub.add_parser("register", help=_("add the connected device to your Garmin account "
+                                          "(experimental; a dry run without --apply)"))
     s.add_argument("--apply", action="store_true",
                    help=_("add it: changes your Garmin account"))
     s.set_defaults(func=cmd_register)
 
     s = sub.add_parser("apps", help=_("Connect IQ apps, watch faces and data fields"))
     s.add_argument("--builtin", action="store_true", help=_("also list built-in activities"))
-    asub = s.add_subparsers(dest="apps_cmd")
+    asub = s.add_subparsers(dest="apps_cmd", action=_Commands)
     change_help = _("write the change to the device (it takes effect once unplugged)")
     apply_help = {
         "install": _("install the app, or queue it in Garmin Connect where USB cannot"),
@@ -4127,7 +4461,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_apps)
 
     s = sub.add_parser("music", help=_("music, podcasts and audiobooks on the device"))
-    msub = s.add_subparsers(dest="music_cmd")
+    msub = s.add_subparsers(dest="music_cmd", action=_Commands)
     m = msub.add_parser("add", help=_("copy audio files or folders to the device"))
     m.add_argument("paths", nargs="+", metavar="PATH",
                    help=_("audio files or folders on this computer"))
@@ -4174,8 +4508,6 @@ def build_parser() -> argparse.ArgumentParser:
                        help=_("write the files (with --remove: delete them)"))
         s.add_argument("--remove", action="store_true",
                        help=_("remove the menu entry, icon and service instead"))
-        s.add_argument("--force", action="store_true",
-                       help=_("install even if the Flatpak of openExpress is installed"))
         s.set_defaults(func=cmd_install_desktop)
     for name in DEVICE_COMMANDS:
         for parser in _with_its_commands(sub.choices[name]):
@@ -4292,6 +4624,9 @@ def _main(argv: list[str] | None) -> int:
     from openexpress.auth import sso
 
     sso.note_unfinished_sign_in()  # the last run ended with the sign-in window open
+    from openexpress.device import whole_reads
+
+    whole_reads.remove_leftovers()  # copies of a device's files a run left as it ended
     code: int | str = "error"
     try:
         code = _run(args)
@@ -4354,11 +4689,25 @@ def _run(args) -> int:
         log.info("error: %s: %s", type(e).__name__, e)  # shown to the user below
         _error(_("Error: {error}").format(error=e))
         return 1
+    except (NetworkError, requests.RequestException) as e:
+        # No answer: the network, not a server. The client's NetworkError (an ApiError, so
+        # before it) carries the requests error as its cause.
+        cause = e.__cause__ if isinstance(e, NetworkError) and e.__cause__ is not None else e
+        _error(_("Network error: could not reach the Garmin server ({error})").format(
+            error=applog.network_error_text(cause)))
+        log.info("network error: %s", type(cause).__name__)
+        log.debug("network error", exc_info=True)
+        return 1
     except ApiError as e:
         log.info("server error: %s: %s", type(e).__name__, e)
-        # TRANSLATORS: CLI error from a Garmin server ({error}: the request's name and what went
-        # wrong)
-        _error(_("Server error: {error}").format(error=e))
+        status = getattr(e, "status", None)
+        if status is not None and applog.is_server_error(status):
+            # Its words say "server error (HTTP 503)" already: not "Server error:" twice.
+            _error(_("Error: {error}").format(error=e))
+        else:
+            # TRANSLATORS: CLI error from a Garmin server ({error}: the request's name and what went
+            # wrong)
+            _error(_("Server error: {error}").format(error=e))
         if args.verbose and e.body:
             print(applog.redact(e.body), file=sys.stderr)  # the server's own words: filtered
         return 1
@@ -4369,12 +4718,6 @@ def _run(args) -> int:
         log.info("error: %s: %s", type(e).__name__, e)  # shown to the user below
         _error(_("Error: {error}").format(error=e))
         return 1
-    except requests.RequestException as e:
-        _error(_("Network error: could not reach the Garmin server ({error})").format(
-            error=applog.network_error_text(e)))
-        log.info("network error: %s", type(e).__name__)
-        log.debug("network error", exc_info=True)
-        return 1
     except KeyboardInterrupt:
         # TRANSLATORS: CLI: the command was stopped with Ctrl+C
         _error(_("Interrupted."))
@@ -4384,5 +4727,11 @@ def _run(args) -> int:
         # -v; both filtered. Its text may carry a device address or a path, so the message for
         # the user is filtered as well.
         log.info("unexpected error: %s", type(e).__name__, exc_info=True)
-        _error(applog.redact(_("Error: {error}").format(error=str(e) or type(e).__name__)))
+        _error(_("Error: {error}").format(error=applog.error_text(e)))
+        if applog.is_fault(e):
+            # TRANSLATORS: CLI, under the words of an error nobody foresaw; "openexpress report
+            # --log" is a command, not to be translated; it prints the address of a device report
+            # filled in and the log to paste into it
+            _error(_("This is a bug in openExpress. To report it, run openexpress report --log "
+                     "and follow what it prints."))
         return 1

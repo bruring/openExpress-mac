@@ -125,6 +125,14 @@ def _size(n: int | None) -> str:
     return "unknown" if not n else human_size(n, localize=False)
 
 
+def _connection(storage: Storage) -> str:
+    """How the device is connected. Only the kind of its address is used: the rest of it has
+    the serial number."""
+    if storage.mass_storage:
+        return "USB drive"
+    return "MTP" if storage.label.lower().startswith("mtp://") else "a folder on this computer"
+
+
 def _system(logged_in: bool | None) -> list[str]:
     """The section of the system, the same with a device or without. On macOS it names the
     edition, so that a report from it is never taken for one of openExpress on Linux, and
@@ -157,13 +165,12 @@ def _diagnostics(device: GarminDevice, storage: Storage, ask: bool, found) -> li
     what it read now (`found`, diagnostics.read_now; read here when not given); else what the
     page tells (status.crashes_known and status.dumps_now, from what the window read at the
     opening, `found`, diagnostics.AtOpen; None: not read yet)."""
-    from openexpress import crashes, diagnostics, status
+    from openexpress import diagnostics, status
 
     if ask:
         read = found if found is not None else diagnostics.read_now(device, storage)
         errors_known = read.errors_known
-        found_crashes = crashes.history(device.unit_id, read.entries if errors_known else None,
-                                        test_drive=bool(getattr(storage, "test_drive", False)))
+        found_crashes = status.crashes_known(device, storage, read)
         dumps = ((len(read.dumps), sum(size for _p, size in read.dumps)) if read.dumps_known
                  else None)
     else:
@@ -211,6 +218,7 @@ def build(device: GarminDevice, storage: Storage, logged_in: bool | None = None,
         f"- Software: {device.software_version_str}",
         # Vendor and product ID of the USB device; never taken from the MTP address.
         f"- USB ID: {getattr(storage, 'usb_id', None) or 'unknown'}",
+        f"- Connection: {_connection(storage)}",
         f"- Storage: {_size(capacity)} total, {_size(free)} free",
         f"- Data types: {len(datatypes)}, components: {len(device.update_files)}",
         "",

@@ -129,13 +129,26 @@ extension EngineConnection {
                        progress: progress)
     }
 
-    /// `maps.install` / `maps.remove`, one map after the other.
-    public func maps(_ action: MapAction, _ unitID: String, names: [String],
+    /// `maps.install` / `maps.remove` / `maps.move`, one map after the other. `to`: where an
+    /// install puts a map not on the device yet, or where a move takes it (`.internal`, `.card`).
+    public func maps(_ action: MapAction, _ unitID: String, names: [String], to: MapLocation? = nil,
+                     cardReader: String? = nil, source: MoveSource? = nil,
                      progress: (@Sendable (EngineProgress) -> Void)? = nil) async throws -> OperationResult {
-        OperationResult(raw: try await call(
-            "maps.\(action.rawValue)",
-            params: ["device": .string(unitID), "maps": .array(names.map { .string($0) }), "apply": true],
-            progress: progress))
+        var params: [String: JSONValue] = ["device": .string(unitID), "maps": .array(names.map { .string($0) }),
+                                           "apply": true]
+        if let to { params["to"] = .string(to.rawValue) }
+        // The device's card in this Mac's card reader: the map's card files are written there.
+        if let cardReader { params["card_reader"] = .string(cardReader) }
+        // A move: its files read off the device, or downloaded again.
+        if let source { params["source"] = .string(source.rawValue) }
+        return OperationResult(raw: try await call("maps.\(action.rawValue)", params: .object(params),
+                                                   progress: progress))
+    }
+
+    /// `maps.card_reader`: the memory cards in this Mac's card reader, and which is the
+    /// device's. Opens nothing on the device: asked again and again while the card is put in.
+    public func cardReaders(_ unitID: String) async throws -> CardReaderList {
+        try await call("maps.card_reader", params: ["device": .string(unitID)], as: CardReaderList.self)
     }
 
     /// `maps.update`: every installed map that has an update.
@@ -222,7 +235,10 @@ extension EngineConnection {
     }
 }
 
-public enum MapAction: String, Sendable { case install, remove }
+public enum MapAction: String, Sendable { case install, remove, move }
+
+/// Where a move gets the map's files: read off the device, or downloaded again from Garmin.
+public enum MoveSource: String, Sendable, Hashable { case device, download }
 
 struct DevicesList: Decodable { var devices: [Device] }
 

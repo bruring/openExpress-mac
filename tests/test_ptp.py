@@ -142,7 +142,7 @@ def test_answer_split_over_many_reads(device):
 def test_wrong_transaction_id_stops_the_conversation(device):
     with ptp.Session(device) as session:
         device.wrong_transaction = True
-        with pytest.raises(ptp.PtpError, match="out of step"):
+        with pytest.raises(ptp.PtpError, match="does not match the request"):
             session.storages()
         sent = len(device.transfers)
         with pytest.raises(ptp.PtpError):
@@ -296,7 +296,7 @@ def own_session(device, monkeypatch):
     from openexpress.device import gio_storage
 
     @contextlib.contextmanager
-    def unmounted(storage, what, closed):
+    def unmounted(storage, what, closed, whole):
         yield time.monotonic()
 
     def opened(cls, bus, address):
@@ -345,6 +345,27 @@ def test_the_operations_are_logged_in_full_once_a_connection(device, own_session
     assert said[1:3] == ["PTP: the device lists the same operations as before", full]
     assert said[3].startswith("PTP: the device lists 36 operations; GetPartialObject yes")
     assert len(said) == 4 and device.sent(ptp.GET_DEVICE_INFO) == 4
+
+
+def test_objects_of_another_folder_are_logged_once_a_connection_by_their_count(device,
+                                                                              own_session,
+                                                                              caplog):
+    """What Garmin's listing names in another folder is left out, and said once a connection,
+    by how many, never by name."""
+    import logging
+
+    apps = device.handle("GARMIN/Apps")
+    device.garmins_extra[apps] = [device.handle("GARMIN/Apps/Media/A1B2C3D4.PRG")]
+    first, again = _plugged_at(14), _plugged_at(15)  # unplugged and plugged in again
+    listed = []
+    with caplog.at_level(logging.INFO, logger="openexpress.device.gio_storage"):
+        for storage in (first, first, again):
+            with own_session(storage) as session:
+                listed.append([o.name for o in session.all_children(STORAGE, apps)])
+    said = [r.getMessage() for r in caplog.records if "another folder" in r.getMessage()]
+    assert listed == [["OUT.BIN", "Media"]] * 3
+    assert said == ["PTP: Garmin's listing named 1 object(s) of another folder; left out"] * 2
+    assert not any("A1B2C3D4" in r.getMessage() for r in caplog.records)
 
 
 # --- hidden objects ----------------------------------------------------------------------
@@ -1043,7 +1064,18 @@ def test_a_folder_the_device_does_not_make_is_refused(device):
 def test_the_size_free_space_and_name_of_a_storage(device):
     with ptp.Session(device) as session:
         info = session.storage_info(STORAGE)
-    assert info == ptp.StorageInfo(2 * device.free, device.free, "Internal")
+    assert info == ptp.StorageInfo(2 * device.free, device.free, "Internal",
+                                   ptp.STORAGE_FIXED_RAM, 2, 0)
+    assert not info.removable and not info.read_only
+
+
+def test_a_memory_card_is_told_by_its_storage_type(device):
+    """A GPSMAP H1i Plus lists its card as a second storage, "Memory Card", RemovableRAM."""
+    device.add_storage(0x00020001, "Memory Card", 128 * 10**9, 127 * 10**9,
+                       kind=ptp.STORAGE_REMOVABLE_RAM)
+    with ptp.Session(device) as session:
+        info = session.storage_info(0x00020001)
+    assert (info.description, info.removable, info.read_only) == ("Memory Card", True, False)
 
 
 def test_the_modification_date_of_an_object(device):

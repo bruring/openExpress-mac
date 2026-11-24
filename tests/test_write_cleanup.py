@@ -9,7 +9,7 @@ import uuid
 import pytest
 from fakes import RunNow, SyncClient
 from fakes import window as stand_in
-from test_ciq_music import FACE, STORE_ID, iq_device, out_bin  # noqa: F401 - the fixtures
+from test_ciq_music import STORE_ID, iq_device, out_bin  # noqa: F401 - the fixtures
 from test_updates_system import disk_full_halfway
 
 from openexpress import ciq, maps, music, sync, trueup
@@ -350,7 +350,7 @@ def test_an_app_update_refused_leaves_the_old_app(iq_device):
     rep = ciq.install_queued(dev, Mtp(st.root, refused=(".PRG",)), client, messages, known={})
     assert [name for name, _error in rep.failed] == ["Made-up Face"]
     assert prg.read_bytes() == b"OLD APP" and client.acks == []
-    assert FACE  # (the fixture's own face is not part of this test)
+    assert _files_in(st, "GARMIN/APPS/MEDIA") == ["ABCD1234.PRG"]
 
 
 # --- the map whose unlock file could not be written: what the user is told (B a) -----------------

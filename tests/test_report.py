@@ -95,6 +95,33 @@ def test_usb_id_comes_from_the_storage_not_from_the_address(device_root):
     assert "- USB ID: unknown" in report.build(dev, st)
 
 
+def test_the_report_says_how_the_device_is_connected(device_root):
+    """So that nobody has to ask: over MTP, as a USB drive, or a folder given with --path. The
+    address the line is told by never shows."""
+    from openexpress.device.storage import UmsStorage
+
+    mtp = LocalStorage(device_root)
+    mtp.label = "mtp://Garmin_Edge_1050_0000abcdef12/Internal%20Storage"
+    drive = UmsStorage(device_root, "file:///run/media/someone/GARMIN")
+    folder = LocalStorage(device_root)
+    dev = parse(folder.read("GARMIN/GarminDevice.xml"))
+    said = {}
+    for name, storage in (("mtp", mtp), ("drive", drive), ("folder", folder)):
+        text = report.build(dev, storage)
+        said[name] = [line for line in text.splitlines() if line.startswith("- Connection:")]
+        assert "0000abcdef12" not in text and "someone" not in text
+    assert said == {"mtp": ["- Connection: MTP"], "drive": ["- Connection: USB drive"],
+                    "folder": ["- Connection: a folder on this computer"]}
+
+
+def test_the_connection_stands_next_to_the_usb_id(device_root):
+    st = FakeMtpStorage(device_root)
+    st.label = FakeMtpStorage.label
+    lines = report.build(parse(st.read("GARMIN/GarminDevice.xml")), st).splitlines()
+    at = next(i for i, line in enumerate(lines) if line.startswith("- USB ID:"))
+    assert lines[at + 1] == "- Connection: MTP"
+
+
 # --- an address that opens the GitHub form filled in -------------------------------------------
 
 

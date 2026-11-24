@@ -5,6 +5,7 @@ from __future__ import annotations
 import configparser
 import contextlib
 import fcntl
+import json
 import os
 import subprocess
 import tempfile
@@ -13,7 +14,11 @@ from pathlib import Path
 from openexpress import platform
 
 APP_NAME = "openexpress"
+# The Flatpak's ID; the icons in openexpress/data and the Flatpak's folders are named after it.
 APP_ID = "io.github.tomaszbojanowski.OpenExpress"
+# The version from source has an ID of its own (app_id), so that its window, its background
+# service and its menu entries neither take the Flatpak's nor hide them.
+SOURCE_APP_ID = APP_ID + ".Devel"
 FLATPAK_INFO = Path("/.flatpak-info")
 
 
@@ -52,6 +57,30 @@ def in_flatpak() -> bool:
     return FLATPAK_INFO.exists()
 
 
+def app_id() -> str:
+    """The ID of this install: the Flatpak's (APP_ID), or the one of the version from source
+    (SOURCE_APP_ID)."""
+    return APP_ID if in_flatpak() else SOURCE_APP_ID
+
+
+def session_mark_dirs() -> list[Path]:
+    """Where a USB session of openExpress's own is marked for its other processes
+    (device.session_mark), from this session's XDG_RUNTIME_DIR: session_mark_dirs_in."""
+    return session_mark_dirs_in(os.environ.get("XDG_RUNTIME_DIR"))
+
+
+def session_mark_dirs_in(runtime: str | None) -> list[Path]:
+    """The folder the Flatpak shares with the host and its other instances,
+    `runtime`/app/APP_ID/, when it is there (Flatpak makes it as it starts the app: the version
+    from source sees it once the Flatpak has run since the system started), then always
+    `runtime`/openexpress/ (the version from source's own; in the Flatpak, a folder of its
+    sandbox). An empty list without a runtime folder."""
+    if not runtime:
+        return []
+    shared = Path(runtime) / "app" / APP_ID
+    return [*([shared] if shared.is_dir() else []), Path(runtime) / "openexpress"]
+
+
 def flatpak_data_dir() -> Path:
     """The data folder of the Flatpak of openExpress, as the rest of this user's files see it
     (outside the sandbox)."""
@@ -79,13 +108,15 @@ def flatpak_build() -> tuple[str | None, str | None] | None:
         return None
 
 
-def host_command(*args: str) -> list[str]:
+def host_command(*args: str, watch_bus: bool = False) -> list[str]:
     """A command for the host, run from the Flatpak (flatpak-spawn --host); every one is made
     here. GIO_USE_VFS=gvfs: the session helper of flatpak before 1.14.5 (1.12 on Ubuntu 22.04)
     passes on its own GIO_USE_VFS=local, and the host's gio then sees mtp:// as no file of gvfs,
     so every copy to the device fails with "Operation not supported". Where gvfs is not
-    installed, GIO says so on stderr and keeps the local VFS."""
-    return ["flatpak-spawn", "--host", "--env=GIO_USE_VFS=gvfs", *args]
+    installed, GIO says so on stderr and keeps the local VFS. `watch_bus`: the command on the
+    host ends when flatpak-spawn does (a copy stopped here stops there too)."""
+    return ["flatpak-spawn", "--host", *(["--watch-bus"] if watch_bus else []),
+            "--env=GIO_USE_VFS=gvfs", *args]
 
 
 def flatpak_origin() -> str | None:
@@ -180,6 +211,16 @@ def make_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def make_private_dir(path: Path) -> None:
+    """Makes `path` as make_dir does, its owner's alone (PRIVATE_DIR) from the start, also one
+    made before with the usual mode: for what nobody else may list (copies of a device's files,
+    Garmin's answers about the account)."""
+    make_dir(path.parent)
+    path.mkdir(mode=PRIVATE_DIR, exist_ok=True)
+    if path.stat().st_mode & 0o777 != PRIVATE_DIR:
+        path.chmod(PRIVATE_DIR)  # made before with the usual mode, or the umask cut mkdir's
+
+
 def _make_private(root: Path) -> None:
     if root.is_dir():
         return
@@ -219,13 +260,20 @@ def locked(path: Path, *, mode: str = "a", shared: bool = False, wait: bool = Tr
 
 
 @contextlib.contextmanager
+def folder_locked(folder: Path, name: str):
+    """The lock file `name` in `folder`, the folder made when it is not there, held for the
+    block (locked)."""
+    make_dir(folder)
+    with locked(folder / name):
+        yield
+
+
+@contextlib.contextmanager
 def settings_locked():
     """One writer of settings.json at a time, in any process and any thread (each opens the
     lock file of its own); the system lets go of it when the process ends. Reading alone
     needs no lock: the file is replaced whole (write_private)."""
-    folder = config_dir()
-    make_dir(folder)
-    with locked(folder / "settings.lock"):
+    with folder_locked(config_dir(), "settings.lock"):
         yield
 
 
@@ -252,3 +300,13 @@ def write_private(path: Path, data: str | bytes) -> None:
                 os.unlink(tmp)
             except OSError:
                 pass
+
+
+def read_json_object(path: Path) -> dict | None:
+    """What a JSON file holds, read as write_private writes it (UTF-8, whatever the locale);
+    None when it does not read or holds no object (a file changed by hand)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None

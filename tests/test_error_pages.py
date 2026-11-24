@@ -1,16 +1,16 @@
-"""Tests the pages that say why they show nothing (a device in mass storage mode, ownership not
-known, no media): an Adw.StatusPage description is markup, so a text with "<" (a network error
-names "<path>" or "<urllib3… object at …>") would leave it empty; it is escaped and shown as it
-is. All texts are made up."""
+"""Tests the pages that say why they show nothing (a device in mass storage mode, not on the
+account, no media): an Adw.StatusPage description is markup, so a text with "<" (an account's
+name, a translation) would leave it empty; it is escaped and shown as it is. All texts are made
+up."""
 
 import types
 
 import pytest
 from fakes import window as stand_in
 
-NETWORK = ("Cannot check the device on your account: network error (HTTPSConnectionPool: "
-           "<urllib3.connection.HTTPSConnection object at 0x7f0000000000>: failed to resolve "
-           "host, see <path>)")
+NETWORK = ("Could not check whether this device belongs to your Garmin account (Account device "
+           "list: network error (no connection)). Nothing was synced.")
+NOT_ON_THE_ACCOUNT = "This device is not registered to the Garmin account of <made> & up."
 
 
 def _section(key):
@@ -37,15 +37,30 @@ def _shown(section, page="error") -> list[str]:
 
 @pytest.mark.needs_display
 def test_the_apps_page_shows_an_ownership_error_with_brackets():
+    from openexpress.connect import NotAccountDevice
+    from openexpress.gui.app import MainWindow
+
+    section = _section("apps")
+    win = stand_in(sections={"apps": section}, session=types.SimpleNamespace(
+        logged_in=True, ownership_error=NotAccountDevice(NOT_ON_THE_ACCOUNT)))
+    MainWindow.load_apps(win)
+    assert NOT_ON_THE_ACCOUNT in _shown(section)
+
+
+@pytest.mark.needs_display
+def test_the_apps_page_says_the_account_was_not_checked_in_the_words_of_the_banner():
+    """Not the error of the sync, which was not made: the words of the banner above the page."""
     from openexpress.connect import OwnershipUnknown
     from openexpress.gui.app import MainWindow
 
     section = _section("apps")
     win = stand_in(
-        sections={"apps": section},
+        sections={"apps": section}, _ownership_title=MainWindow._ownership_title,
         session=types.SimpleNamespace(logged_in=True, ownership_error=OwnershipUnknown(NETWORK)))
     MainWindow.load_apps(win)
-    assert NETWORK in _shown(section)
+    shown = _shown(section)
+    assert "Could not check whether this device belongs to your Garmin account" in shown
+    assert not any("Nothing was synced" in text for text in shown)
 
 
 @pytest.mark.needs_display

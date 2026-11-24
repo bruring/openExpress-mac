@@ -34,6 +34,9 @@ format-*: the shapes older versions wrote, with made-up numbers; and shapes of t
   wrote one course from Garmin Connect ("nothing to upload · 1 received"); with the activities
   the device has to upload now after it, the row and `openexpress status` say both apart
   ("· 2 activities to upload now"). Synthetic (marked "synthetic" in it).
+format-primary-device-data-trueup.json: a sync that uploaded an activity and the primary
+  training device data, and wrote TrueUp: both lines kept as kinds, put into words when
+  shown, so in the words of the version that shows them. Synthetic (marked "synthetic" in it).
 format-other-install.json: a sync of the version from source of a device the Flatpak synced
   after it: nothing new to send, and the step that says the Flatpak synced it (made up).
 format-test-drive.json: a sync of a test drive (a USB drive taken for a Garmin drive) that

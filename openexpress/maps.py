@@ -15,20 +15,22 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import posixpath
 import re
 import shutil
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from openexpress import answers, applog, awake, cache, download, hidden_folders, paths
+from openexpress import answers, applog, awake, cache, download, hidden_folders, paths, updates
 from openexpress.connect import ApiError, unexpected_answer_text
+from openexpress.device import card as cards
 from openexpress.device.storage import DeviceError, DeviceNotResponding, Storage, connection
 from openexpress.errors import UserFacingError
-from openexpress.i18n import _, country_name
+from openexpress.i18n import _, country_name, human_size
 from openexpress.progress import (
     Step,
     byte_steps,
@@ -112,6 +114,10 @@ class UniversalMap:
     # (mark_waiting): nothing is installed or removed there; its files are known only when
     # that folder was read through openExpress's own session (hidden_folders).
     hidden_folder: str | None = None
+    # The folder its files go to when the device hides it inside a folder the listing shows
+    # (mark_waiting with the device: the rule of the updates, updates.hidden_inside): maps are
+    # not written there, the command line's trial included, so it is refused before anything.
+    folder_hidden: str | None = None
     # The country Garmin does not offer the map in ("restriction", type "Country"; upper
     # case), and whether that is the account's country (apply_country): True, False (no
     # restriction, or another country), None (restricted, the account's country not known).
@@ -128,6 +134,9 @@ class UniversalMap:
     # A map in a folder the device hides that was being written and stopped (mark_waiting): some
     # of its old files gone or some of its new ones there, not all of them: incomplete.
     partly_written: bool = False
+    # Where its own .img files are (mark_waiting): cards.INTERNAL, cards.CARD (the device's
+    # memory card), cards.BOTH, or None (none on the device, or not known).
+    location: str | None = None
 
     # The states of the server ("installationState"): 0 not installed, 1 installed, 2 partly
     # on the device, 3 a newer version on the device.
@@ -531,16 +540,25 @@ MISSING_FILE, BAD_CHECKSUM = "missing-file", "bad-checksum"
 def can_install(m: UniversalMap, hidden_trial: bool = False) -> bool:
     """Whether the server gave a usable, checked download for every file of `m`, Garmin
     offers it in the account's country, and its files go to folders ordinary MTP shows - or,
-    with `hidden_trial` (the command line's trial), to a folder the device hides that
-    openExpress's own session read."""
+    with `hidden_trial` (the command line's trial), to a folder of the top level the device
+    hides that openExpress's own session read; never to one it hides inside a seen one."""
     return (m.installable and bool(m.files) and m.restricted is not True
+            and m.folder_hidden is None and m.location not in (cards.BOTH, cards.CARD_OUT)
             and (m.hidden_folder is None or (hidden_trial and m.device_sizes is not None)))
 
 
 def cannot_install_reason(m: UniversalMap) -> str:
     """The same reason as cannot_install_message, short, for the line under the map's name."""
+    if m.location == cards.CARD_OUT:
+        # TRANSLATORS: under a map's name: it is on the memory card, which is not in the device
+        return _("On the memory card, which is not in the device")
+    if m.location == cards.BOTH:
+        # TRANSLATORS: under a map's name: its files are on the device and on its memory card
+        return _("On the device and on its memory card: openExpress does not change it")
     if m.hidden_folder is not None:
         return not_installed_into(m.hidden_folder)
+    if m.folder_hidden is not None:
+        return not_installed_hidden_inside(m.folder_hidden)
     if m.restricted is True:
         return _("Cannot be installed: Garmin does not offer this map in your account's "
                  "country")
@@ -554,11 +572,19 @@ def cannot_install_message(m: UniversalMap, hidden_trial: bool = False) -> str:
     """Why `m` cannot be installed, the same words in the command line and the window;
     `hidden_trial`: the reasons of the server and the account only (the trial installs into a
     folder the device hides)."""
-    if m.hidden_folder is not None and not hidden_trial:
-        # TRANSLATORS: {folder}: a folder the device hides from the ordinary USB connection,
-        # e.g. .System
+    if m.location in (cards.BOTH, cards.CARD_OUT):
+        return on_card_message(m)
+    if not hidden_trial and m.hidden_folder is not None:
+        # TRANSLATORS: {folder}: a folder the device hides from the file manager, e.g.
+        # .System
         return _("Map “{name}” cannot be installed: openExpress does not install maps into "
                  "the folder {folder} yet.").format(name=m.name, folder=m.hidden_folder)
+    if m.folder_hidden is not None:
+        # TRANSLATORS: {folder}: a folder the device hides inside a folder the file manager
+        # shows, e.g. GARMIN/RegionMaps
+        return _("Map “{name}” cannot be installed: the device hides the folder {folder} from "
+                 "the file manager, and openExpress does not install maps there yet.").format(
+            name=m.name, folder=m.folder_hidden)
     if m.restricted is True:
         return _("Map “{name}” cannot be installed: Garmin does not offer it in your account's "
                  "country ({country}).").format(name=m.name,
@@ -639,16 +665,20 @@ def find(maps: list[UniversalMap], name: str) -> UniversalMap:
                    .format(names="; ".join(m.name for m in partial)))
 
 
-def mark_waiting(storage: Storage, maps: list[UniversalMap]) -> None:
+def mark_waiting(storage: Storage, maps: list[UniversalMap], device=None) -> None:
     """Sets `waiting` on the maps written to or removed from the device that the device has
     not taken in yet: it does that when it is unplugged, and only then do GarminDevice.xml and
     so Garmin's server know. Read from the files on the device against the server's list,
-    nothing remembered; none is marked when the files cannot be listed."""
+    nothing remembered; none is marked when the files cannot be listed. With the `device`
+    (its GarminDevice.xml): the maps whose files go to a folder it hides inside a seen one
+    (folder_hidden)."""
     for m in maps:
+        m.folder_hidden = None
         m.waiting = None
         m.unseen = False
         m.device_sizes = None
         m.partly_written = False
+        m.location = None
     wanted = {p for m in maps for p in m.all_paths}
     present: dict[str, int] = {}  # casefolded path -> size, one listing per folder
     unseen: set[str] = set()  # casefolded folders the listing does not show
@@ -658,6 +688,8 @@ def mark_waiting(storage: Storage, maps: list[UniversalMap]) -> None:
         tops = hidden_folders.top_folders(storage)
         for m in maps:
             m.hidden_folder = _top_not_seen(m.all_paths, tops)
+        if device is not None:
+            _mark_folder_hidden(storage, maps, device)
         for folder in {posixpath.dirname(p) for p in wanted}:
             if hidden_folders.top_not_seen(folder, tops) is not None:
                 # Read through openExpress's own session, or not known.
@@ -683,6 +715,61 @@ def mark_waiting(storage: Storage, maps: list[UniversalMap]) -> None:
                     "waiting for unplugging: %s", e)
         log_states(storage, maps)
         return
+    # None: the card could not be read. What it holds is not known then, so no map is taken
+    # for removed (its files may be there), and none gets a place on it.
+    on_card = _listed_on_card(storage, device, wanted)
+    _mark_waiting_known(maps, present, unseen, unread, on_card or {},
+                        card_read=on_card is not None)
+    log_states(storage, maps)
+
+
+def _listed_on_card(storage: Storage, device, wanted: set[str]) -> dict[str, int] | None:
+    """The files of `wanted` (paths as the server names them) that are on the device's memory
+    card, by the server's path in lower case, with their size; empty for a device without a
+    card; None when what it holds is not known: it cannot be read, or the device declares a
+    card and none is in it (taken out, e.g. to be written in a computer's card reader)."""
+    card = cards.card_of(storage, device)
+    if card is None:
+        if cards.declares_card(device):
+            log.info("maps: the device declares a memory card and none is in it; maps on it "
+                     "are not known")
+            return None
+        return {}
+    found: dict[str, int] = {}
+    seen: dict[str, int] = {}  # found, by its path on the card
+    folders: dict[str, dict[str, int] | None] = {}  # the card's folder -> its files by name
+    try:
+        for path in wanted:
+            for candidate in cards.card_paths(path, device):
+                folder = posixpath.dirname(candidate)
+                if folder.casefold() not in folders:
+                    folders[folder.casefold()] = (
+                        {e.name.casefold(): e.size for e in card.listdir(folder) if not e.is_dir}
+                        if card.resolve(folder, strict=True) is not None else None)
+                listed = folders[folder.casefold()]
+                name = posixpath.basename(candidate).casefold()
+                if listed is not None and name in listed:
+                    found.setdefault(path.casefold(), listed[name])
+                    seen[candidate] = listed[name]
+    except DeviceNotResponding:
+        raise
+    except Exception as e:  # noqa: BLE001 - only shown: the map check goes on without it
+        log.warning("maps: cannot read the map files on the memory card: %s", e)
+        return None
+    log.info("maps: %d of the maps' files on the memory card (%s)", len(found),
+             card.description or "unnamed")
+    if not card.in_reader:  # over MTP: what tells it apart in a card reader later
+        images = {p: n for p, n in seen.items() if p.casefold().endswith(".img")}
+        cards.remember(device, card, images)
+    return found
+
+
+def _mark_waiting_known(maps: list[UniversalMap], present: dict[str, int], unseen: set[str],
+                        unread: set[str], on_card: dict[str, int], card_read: bool) -> None:
+    """mark_waiting, once the files are known: `present` on internal storage, `on_card` on the
+    memory card (both by the server's path in lower case). A file on either counts as on the
+    device; where a map's own .img files are is its location."""
+    anywhere = {**on_card, **present}
     for m in maps:
         paths = {p.casefold() for p in m.all_paths}
         if not any(posixpath.dirname(p) in unread for p in paths):
@@ -690,7 +777,8 @@ def mark_waiting(storage: Storage, maps: list[UniversalMap]) -> None:
     for m in maps:
         # Written: the server does not have the map (or has an older version), yet every file
         # of the map is on the device, at the size the server gives.
-        on_device = [present.get(f.device_path.casefold()) == f.size for f in m.files]
+        on_device = [f.size in (present.get(f.device_path.casefold()),
+                                on_card.get(f.device_path.casefold())) for f in m.files]
         # An update with the very names of the files installed now cannot be told apart.
         new_names = {f.device_path.casefold() for f in m.files} - {
             p.casefold() for p in m.files_to_remove}
@@ -707,15 +795,50 @@ def mark_waiting(storage: Storage, maps: list[UniversalMap]) -> None:
         # is on the device.
         own = {p.casefold() for p in m.all_paths}
         own -= protected_files(maps, m)
-        if own and all(posixpath.dirname(p) in unseen for p in own):
+        if own and all(posixpath.dirname(p) in unseen for p in own) and not any(
+                p in on_card for p in own):
             # No folder of its files is seen: that says nothing of the map.
             m.unseen = True
             continue
-        if own and not any(p in present for p in own):
+        if own and not any(p in anywhere for p in own) and card_read:
             removed.append(m)
     for m in removed:
         m.waiting = WAIT_REMOVE
-    log_states(storage, maps)
+    for m in maps:
+        m.location = _location(m, maps, present, on_card, card_read)
+
+
+def _location(m: UniversalMap, maps: list[UniversalMap], present: dict[str, int],
+              on_card: dict[str, int], card_read: bool = True) -> str | None:
+    """Where the map's own .img files are (those no other map shares: a shared terrain layer
+    stays where it is and says nothing of the map); with no .img of its own, its own files.
+    Its unlock and search files stay on internal storage wherever the map is, so they don't
+    count."""
+    own = {p.casefold() for p in m.all_paths} - protected_files(maps, m)
+    images = {p for p in own if p.endswith(".img")} or own
+    here, there = any(p in present for p in images), any(p in on_card for p in images)
+    if here and there:
+        return cards.BOTH
+    if not here and not there and not card_read and m.installed:
+        return cards.CARD_OUT  # not on internal storage: presumably on the card not there
+    return cards.CARD if there else cards.INTERNAL if here else None
+
+
+def _mark_folder_hidden(storage: Storage, maps: list[UniversalMap], device) -> None:
+    """Sets `folder_hidden` on the maps a file of which goes to a folder the device hides
+    inside a seen one, by the rule of the updates; only the maps' own folders are asked."""
+    def folder(f: MapFile) -> str:
+        return posixpath.dirname(f.device_path).strip("/").casefold()
+
+    inside = updates.hidden_inside(storage, device, among={folder(f) for m in maps
+                                                           for f in m.files})
+    for m in maps:
+        m.folder_hidden = next((inside[folder(f)] for f in m.files if folder(f) in inside), None)
+    refused = [m for m in maps if m.folder_hidden is not None]
+    if refused:
+        log.info("maps: %d go to a folder the device hides inside a seen one (%s): not "
+                 "installed there", len(refused),
+                 ", ".join(sorted({m.folder_hidden for m in refused}, key=str.casefold)))
 
 
 def _partly_written(m: UniversalMap, maps: list[UniversalMap], present: dict[str, int]) -> bool:
@@ -786,7 +909,7 @@ def no_complete_map_text() -> str:
 
 def folder_not_read_text(folder: str) -> str:
     # TRANSLATORS: {folder}: a folder the device hides, e.g. .System/Map
-    return _("The folder {folder} was not read through openExpress's own USB session.").format(
+    return _("The folder {folder} was not read over a direct USB connection.").format(
         folder=folder)
 
 
@@ -883,6 +1006,14 @@ def not_installed_into(folder: str) -> str:
         folder=folder)
 
 
+def not_installed_hidden_inside(folder: str) -> str:
+    # TRANSLATORS: on the Maps page, under a map whose files go to a folder ({folder}, e.g.
+    # GARMIN/RegionMaps) that the device hides inside a folder the file manager shows; without a
+    # full stop
+    return _("The device hides the folder {folder} from the file manager; openExpress does not "
+             "install maps there yet").format(folder=folder)
+
+
 def read_only_text(folder: str) -> str:
     # TRANSLATORS: `openexpress maps`, under a map whose files are in a folder the device hides
     # ({folder}, e.g. .System); openExpress installs software updates there, not maps
@@ -900,13 +1031,15 @@ def _state_words(m: UniversalMap) -> str:
         return "removed, gone when the device is unplugged"
     if m.incomplete:
         return "incomplete"
+    where = {cards.CARD: " (memory card)", cards.BOTH: " (device and memory card)",
+             cards.CARD_OUT: " (memory card, not in the device)"}.get(m.location, "")
     if m.update_available:
-        return "update available"
+        return "update available" + where
     if m.would_update:
-        return "update not offered in the account's country"
+        return "update not offered in the account's country" + where
     if m.state == 3:
-        return "newer on the device"
-    return "current"
+        return "newer on the device" + where
+    return "current" + where
 
 
 def log_states(storage: Storage, maps: list[UniversalMap]) -> None:
@@ -984,6 +1117,9 @@ class MapReport:
     unlocks: list[str] = field(default_factory=list)
     kept: list[str] = field(default_factory=list)  # there already, read back the same
     gmas: list[str] = field(default_factory=list)  # a short MD5 of each unlock file, for the log
+    # Shared layers other maps use, left where they are (an install on the memory card)
+    shared: list[str] = field(default_factory=list)
+    on_card: list[str] = field(default_factory=list)  # of `written`, those on the memory card
 
 
 def _install(
@@ -996,12 +1132,17 @@ def _install(
     url_salt: str | None = None,
     sleep: Callable[[float], None] = time.sleep,
     hidden_trial: bool = False,
+    device=None,
+    to: str | None = None,
 ) -> MapReport:
     if m.waiting == WAIT_INSTALL:
         raise MapError(waiting_message(m))
     if not can_install(m, hidden_trial=hidden_trial):
         raise MapError(cannot_install_message(m))
     removing = removal_list(all_maps, m, rewriting=True)
+    if install_target(m, to) == cards.CARD:
+        return _install_on_card(m, all_maps, storage, removing, activate, session, progress,
+                                url_salt, sleep, device)
     if m.hidden_folder is not None:
         return _install_hidden(m, removing, storage, activate, session, progress, url_salt,
                                sleep)
@@ -1056,24 +1197,513 @@ def _write_all(m, all_maps, storage, removing, files, local, unlocks, progress, 
         report.gmas.append(_short_md5(data))
 
 
-def _download(m: UniversalMap, session, progress, url_salt: str | None) -> dict[str, Path]:
+# --- a map on the memory card ----------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Placement:
+    """Where a file of a map installed on the memory card goes: on `storage` (internal or the
+    card, `where`) at `path`; `storage` None for a shared layer left where it is."""
+
+    file: MapFile
+    storage: Storage | None
+    path: str
+    where: str  # cards.INTERNAL or cards.CARD
+    shared: bool = False  # other maps use the file too
+
+
+def _card_or_refuse(m: UniversalMap, storage: Storage, device) -> Storage:
+    card = cards.card_of(storage, device)
+    if card is None or device is None:
+        raise MapError(no_card_message(m))
+    return card
+
+
+def card_plan(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage, device,
+              heads: dict[str, bytes] | None = None) -> list[Placement]:
+    """Where each file of `m` goes when it is installed on the memory card (docs/design/
+    maps-on-memory-card.md): a file whose data type has an ExternalPath to the card under it,
+    any other on internal storage (cards.card_path_of); a .sid by the kind its first bytes
+    (`heads`, by the server's path) name, on internal while they are not read. A shared
+    .img (a terrain layer other maps use) already on either storage stays where it is; any
+    other shared file gets its own copy where the map needs it."""
+    card = _card_or_refuse(m, storage, device)
+    shared = protected_files(all_maps, m)
+    out = []
+    for f in write_order(m):
+        is_shared = f.device_path.casefold() in shared
+        if is_shared and f.device_path.casefold().endswith(".img"):
+            if storage.exists(f.device_path):
+                out.append(Placement(f, None, f.device_path, cards.INTERNAL, True))
+                continue
+            there = next((c for c in cards.card_paths(f.device_path, device) if card.exists(c)),
+                         None)
+            if there is not None:
+                out.append(Placement(f, None, there, cards.CARD, True))
+                continue
+        on_card = cards.card_path_of(f.device_path, device, (heads or {}).get(f.device_path))
+        if on_card is not None:
+            out.append(Placement(f, card, on_card, cards.CARD, is_shared))
+        else:
+            out.append(Placement(f, storage, f.device_path, cards.INTERNAL, is_shared))
+    return out
+
+
+def card_space(m: UniversalMap, plan: list[Placement], storage: Storage, device,
+               removing: list[str]) -> dict[str, int]:
+    """The space an install on the memory card needs on each storage (cards.INTERNAL,
+    cards.CARD) while it writes, the old files removed first giving theirs back. A .sid whose
+    kind is not read yet is counted on both."""
+    card = _card_or_refuse(m, storage, device)
+    need = {cards.INTERNAL: 0, cards.CARD: 0}
+    for p in plan:
+        if p.storage is None:
+            continue
+        need[p.where] += p.file.size
+        if p.where == cards.INTERNAL and p.path.casefold().endswith(".sid") and (
+                cards.may_go_to_card(p.path, device)):
+            need[cards.CARD] += p.file.size
+    for path in removing:
+        if storage.exists(path):
+            need[cards.INTERNAL] -= storage.size(path) or 0
+        for c in cards.card_paths(path, device):
+            if card.exists(c):
+                need[cards.CARD] -= card.size(c) or 0
+    return {k: max(0, v) for k, v in need.items()}
+
+
+def card_refusals(m: UniversalMap, plan: list[Placement]) -> list[str]:
+    """Why the files of `m` cannot go to the memory card: one larger than FAT32 holds."""
+    out = []
+    for p in plan:
+        if p.where == cards.CARD and p.storage is not None and p.file.size > cards.FAT32_MAX_FILE:
+            # TRANSLATORS: error of a map install on the memory card; {name}: the map,
+            # {path}: one of its files, {size}: its size
+            out.append(_("Map “{name}” cannot be installed on the memory card: its file {path} "
+                         "({size}) is larger than a FAT32 card holds.").format(
+                name=m.name, path=p.path, size=human_size(p.file.size)))
+    return out
+
+
+def _sid_heads(local: dict[str, Path]) -> dict[str, bytes]:
+    """The first bytes of each downloaded .sid, by the server's path: they tell its kind."""
+    heads = {}
+    for path, file in local.items():
+        if path.casefold().endswith(".sid"):
+            with open(file, "rb") as f:
+                heads[path] = f.read(cards.SID_HEADER)
+    return heads
+
+
+def _remove_everywhere(storage: Storage, card: Storage, device, paths: list[str],
+                       say, report: MapReport) -> None:
+    """The old files of a map removed from whichever storage has them."""
+    there = [(storage, p) for p in paths if storage.exists(p)]
+    there += [(card, c) for p in paths for c in cards.card_paths(p, device) if card.exists(c)]
+    for n, (st, p) in enumerate(there, 1):
+        say(Step(_("Removing old map files"), n, len(there)))
+        log.debug("map install: removing %s%s", p, " (memory card)" if st is card else "")
+        st.delete(p)
+        report.removed.append(p)
+
+
+def _install_on_card(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage,
+                     removing: list[str], activate, session, progress, url_salt: str | None,
+                     sleep, device) -> MapReport:
+    """A map installed on (or updated on) the memory card: nothing on the device changes until
+    every file is downloaded and checked, it fits on each storage and the map is activated;
+    then its old files are removed wherever they are, its files written each where card_plan
+    puts it, and its unlock files on internal storage, as Garmin Express does."""
+    card = _card_or_refuse(m, storage, device)
+    plan = card_plan(m, all_maps, storage, device)
+    if refused := card_refusals(m, plan):
+        raise MapError(refused[0])
+    need = card_space(m, plan, storage, device, removing)
+    storage.require_space(need[cards.INTERNAL], SPACE_MARGIN, error=MapError)
+    card.require_space(need[cards.CARD], SPACE_MARGIN, error=MapError)
+    local = _download(m, session, progress, url_salt,
+                      only={p.file.device_path for p in plan if p.storage is not None})
+    plan = card_plan(m, all_maps, storage, device, _sid_heads(local))  # each .sid by its kind
+    if refused := card_refusals(m, plan):
+        raise MapError(refused[0])
+    unlocks = _activation(m, activate, say_to(progress))
+    say = say_to(progress)
+    report = MapReport()
+    with awake.kept_awake(f"map {m.name} is written", say=say):
+        _remove_everywhere(storage, card, device, removing, say, report)
+        writing = [p for p in plan if p.storage is not None]
+        copying, checking = copying_text(m.name), checking_text(m.name)
+        total = sum(p.file.size or 0 for p in writing)
+        copied = 0
+        for p in plan:
+            if p.storage is None:
+                report.shared.append(p.path)
+                continue
+            told = byte_steps(progress, copying, before=copied, total=total)
+            checked = byte_steps(progress, checking, before=copied, total=total)
+            f = replace(p.file, device_path=p.path)
+            log.debug("map install: copying %s%s", p.path,
+                      " (memory card)" if p.where == cards.CARD else "")
+            if p.shared and p.storage.exists(p.path):  # other maps use this very copy
+                real = _write_shared(p.storage, f, local[p.file.device_path], told,
+                                     _users(all_maps, m, p.file.device_path), checked)
+            else:
+                real = _write_checked(p.storage, f, local[p.file.device_path], told, checked)
+            copied += p.file.size or 0
+            report.written.append(real)
+            if p.where == cards.CARD:
+                report.on_card.append(real)
+        for fname, gma in unlocks:  # no data type of an unlock has a place on the card
+            data = base64.b64decode(gma)
+            real = _write_unlock(storage, _device_path(fname), data, say, sleep)
+            report.unlocks.append(real)
+            report.gmas.append(_short_md5(data))
+    log.info("map install: %s %s on the memory card, %d files written (%d on the card, %s), "
+             "%d shared layers left where they are, %d old files removed, %d unlock files "
+             "(md5 %s)", m.name, m.version, len(report.written), len(report.on_card),
+             applog.size(m.size), len(report.shared), len(report.removed),
+             len(report.unlocks), ", ".join(report.gmas) or "-")
+    return report
+
+
+# --- moving a map between internal storage and the memory card ------------------------------
+
+@dataclass(frozen=True)
+class MoveStep:
+    """One file of a map moved: from `source` (at `source_path`) to `target` (at
+    `target_path`); `copy`: it is not on the target yet, `verify`: it is there already and
+    is checked against Garmin's checksum before the source copy goes (a map on both storages),
+    `delete`: the source copy is removed once every file is on the target."""
+
+    file: MapFile
+    source: Storage
+    source_path: str
+    target: Storage
+    target_path: str
+    copy: bool
+    verify: bool
+    delete: bool
+
+
+def move_refused(m: UniversalMap) -> str | None:
+    """Why `m` is not moved; None when it may be. Only a map that is on the device as Garmin's
+    answer has it (installed, up to date, not waiting for the device): the answer's checksums
+    then prove each copy."""
+    if m.location == cards.CARD_OUT:
+        return on_card_message(m)
+    if m.location not in (cards.INTERNAL, cards.CARD, cards.BOTH):
+        # TRANSLATORS: error of a map move; {name}: the map
+        return _("Map “{name}” is not on the device.").format(name=m.name)
+    if m.waiting is not None:
+        return waiting_message(m)
+    if (not m.installed or m.state == 3 or m.would_update or m.incomplete or m.partly_written
+            or m.unseen or m.hidden_folder is not None or m.folder_hidden is not None):
+        # TRANSLATORS: error of a map move; {name}: the map
+        return _("Map “{name}” is moved only when it is up to date on the device: update or "
+                 "install it again first.").format(name=m.name)
+    if not m.installable:
+        return cannot_install_message(m)
+    return None
+
+
+def _head_of(f: MapFile, storages: list[tuple[Storage, str]]) -> bytes | None:
+    """The first bytes of a .sid (they tell its kind), from the first storage that has it."""
+    if not f.device_path.casefold().endswith(".sid"):
+        return None
+    for st, path in storages:
+        if st.exists(path):
+            return st.read_start(path, cards.SID_HEADER)
+    return None
+
+
+def move_plan(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage, device,
+              to: str) -> list[MoveStep]:
+    """The files of `m` that move when it goes to `to` (cards.INTERNAL or cards.CARD): those
+    whose data type has a place on the card (its .img files, an ETYP .sid; card_path_of), from
+    the other storage. Its unlock and search files stay on internal storage. A shared layer
+    stays where it is; a small shared file gets a copy on the target if it has none, and the
+    source copy goes only when no other map off the target uses it. MapError when it is not
+    moved: move_refused, already there, no card, or a file of it on neither storage."""
+    if (why := move_refused(m)) is not None:
+        raise MapError(why)
+    if m.location == to:
+        # TRANSLATORS: error of a map move; {name}: the map
+        raise MapError((_("Map “{name}” is on the memory card already.") if to == cards.CARD
+                        else _("Map “{name}” is on the device already.")).format(name=m.name))
+    card = _card_or_refuse(m, storage, device)
+    target = card if to == cards.CARD else storage
+    source = storage if to == cards.CARD else card
+    shared = protected_files(all_maps, m)
+    steps = []
+    for f in write_order(m):
+        on_card = cards.card_paths(f.device_path, device)
+        head = _head_of(f, [(storage, f.device_path), *((card, c) for c in on_card)])
+        card_path = cards.card_path_of(f.device_path, device, head)
+        if card_path is None:
+            continue  # stays on internal storage wherever the map is
+        is_shared = f.device_path.casefold() in shared
+        if is_shared and f.device_path.casefold().endswith(".img"):
+            continue  # a shared layer stays where it is
+        target_path = card_path if to == cards.CARD else f.device_path
+        source_path = f.device_path if to == cards.CARD else card_path
+        on_source, on_target = source.exists(source_path), target.exists(target_path)
+        if not on_source and not on_target:
+            # TRANSLATORS: error of a map move; {name}: the map, {path}: one of its files
+            raise MapError(_("Map “{name}” is not moved: its file {path} is on neither storage "
+                             "of the device. Install it again.").format(name=m.name,
+                                                                        path=f.device_path))
+        others_off_target = any(
+            o is not m and o.keeps_files and o.location != to
+            and f.device_path.casefold() in {x.casefold() for x in o.all_paths}
+            for o in all_maps)
+        steps.append(MoveStep(
+            f, source, source_path, target, target_path, copy=not on_target,
+            verify=on_target and not is_shared,
+            delete=on_source and not (is_shared and others_off_target)))
+    return steps
+
+
+def move_size(m: UniversalMap, all_maps: list[UniversalMap]) -> int:
+    """About what a move of `m` copies, for the list of maps (move_plan reads the first bytes of
+    each .sid, so the list does not ask it): its own .img files, which no other map shares."""
+    shared = protected_files(all_maps, m)
+    return sum(f.size for f in m.files if f.device_path.casefold().endswith(".img")
+               and f.device_path.casefold() not in shared)
+
+
+def move_cached(m: UniversalMap, all_maps: list[UniversalMap]) -> int:
+    """Of move_size, the bytes in the download cache: neither read off the device nor
+    downloaded again by a move."""
+    shared = protected_files(all_maps, m)
+    return sum(f.size for f in m.files if f.device_path.casefold().endswith(".img")
+               and f.device_path.casefold() not in shared and in_cache(f))
+
+
+def move_space(steps: list[MoveStep]) -> int:
+    """The space a move needs on its target: the files copied there (the source copies are
+    removed only afterwards)."""
+    return sum(s.file.size for s in steps if s.copy)
+
+
+def move_refusals(m: UniversalMap, steps: list[MoveStep], to: str) -> list[str]:
+    """Why the files of `m` cannot go to the card: one larger than FAT32 holds."""
+    if to != cards.CARD:
+        return []
+    return card_refusals(m, [Placement(s.file, s.target, s.target_path, cards.CARD)
+                             for s in steps if s.copy])
+
+
+@dataclass
+class MoveReport:
+    copied: list[str] = field(default_factory=list)  # on the target, by its path there
+    verified: list[str] = field(default_factory=list)  # there already, its checksum right
+    removed: list[str] = field(default_factory=list)  # from the source, by its path there
+    read_from_device: int = 0  # of the copied files, read from the device (not the cache)
+    downloaded: int = 0  # of the copied files, downloaded again
+
+
+def _reading_text(name: str) -> str:
+    # TRANSLATORS: a step of a map move: the map's files read from the device to this computer
+    # ("… · 1.2 MB of 3.4 MB")
+    return _("Reading {name} from the device").format(name=name)
+
+
+def _a_checked_copy(f: MapFile, st: Storage, path: str, name: str, progress, session,
+                    url_salt: str | None, m: UniversalMap, report: MoveReport) -> Path:
+    """The file `f` on this computer with Garmin's checksum: the cache's copy when it has it
+    whole; else the device's copy at `path` on `st`, read into the cache and checked; else, a
+    copy that is not Garmin's file, downloaded again (with a `session`)."""
+    local = cache_file(f)
+    if local.exists() and local.stat().st_size == f.size and download.file_md5(local) == f.md5:
+        log.info("map move: a file of %s in the cache already", name)
+        return local
+    local.parent.mkdir(parents=True, exist_ok=True)
+    part = local.with_name(local.name + ".part")
+    told = byte_steps(progress, _reading_text(name))
+    try:
+        st.copy_out(path, part, told)
+        if part.stat().st_size == f.size and download.file_md5(part) == f.md5:
+            part.replace(local)
+            report.read_from_device += 1
+            return local
+        log.warning("map move: the device's copy of a file of %s is not Garmin's file", name)
+    except DeviceNotResponding:
+        raise
+    except DeviceError as e:
+        log.warning("map move: a file of %s could not be read from the device: %s", name, e)
+    finally:
+        part.unlink(missing_ok=True)
+    if session is None:
+        # TRANSLATORS: error of a map move; {name}: the map, {path}: one of its files
+        raise MapError(_("Map “{name}” is not moved: its file {path} on the device is not "
+                         "Garmin's file. Install the map again.").format(name=name, path=path))
+    report.downloaded += 1
+    return _download(m, session, progress, url_salt, only={f.device_path})[f.device_path]
+
+
+def _verified(f: MapFile, st: Storage, path: str, m: UniversalMap, progress) -> bool:
+    """Whether the copy of `f` already at `path` on `st` is Garmin's file: its size, then its
+    checksum, read into the cache (where it serves a later move or install)."""
+    if st.size(path) != f.size:
+        return False
+    try:  # read to check, not to copy: not counted among the files read for the move
+        _a_checked_copy(f, st, path, m.name, progress, None, None, m, MoveReport())
+    except MapError:
+        return False
+    return True
+
+
+# Where a move gets the map's files it copies: read off the device (where they are now), or
+# downloaded again from Garmin (faster than the device reads over USB on a fast connection).
+FROM_DEVICE, FROM_DOWNLOAD = "device", "download"
+
+
+def move(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage, device, to: str,
+         session=None, url_salt: str | None = None,
+         progress: Callable[[str], None] | None = None,
+         source: str = FROM_DEVICE) -> MoveReport:
+    """`m` moved to `to` (cards.INTERNAL or cards.CARD), or, on both storages, kept on `to`
+    alone. Nothing is removed before every file is on the target and Garmin's file: each
+    copied there (from the cache, else read from the device and checked, else downloaded
+    again) and checked as written, or already there and its checksum checked. A failure before
+    that leaves the source as it was and removes what this move wrote to the target. The
+    device takes the map in where it is now once it is unplugged."""
+    if source == FROM_DOWNLOAD and session is None:
+        raise MapError(_("Map “{name}” cannot be downloaded again here.").format(name=m.name))
+    with cache.using():
+        return _move(m, all_maps, storage, device, to, session, url_salt, progress, source)
+
+
+def _move(m, all_maps, storage, device, to, session, url_salt, progress,
+          source=FROM_DEVICE) -> MoveReport:
+    steps = move_plan(m, all_maps, storage, device, to)
+    if refused := move_refusals(m, steps, to):
+        raise MapError(refused[0])
+    target = storage if to == cards.INTERNAL else _card_or_refuse(m, storage, device)
+    target.require_space(move_space(steps), SPACE_MARGIN, error=MapError)
+    say = say_to(progress)
+    report = MoveReport()
+    for s in steps:
+        if s.verify and not _verified(s.file, s.target, s.target_path, m, progress):
+            # TRANSLATORS: error of a map move; {name}: the map, {path}: one of its files
+            raise MapError(_("Map “{name}” is not moved: its file {path} where it is to stay "
+                             "is not Garmin's file. Install the map again.").format(
+                name=m.name, path=s.target_path))
+        if s.verify:
+            report.verified.append(s.target_path)
+    copying, checking = copying_text(m.name), checking_text(m.name)
+    total = sum(s.file.size for s in steps if s.copy)
+    copied = 0
+    written: list[str] = []
+    with awake.kept_awake(f"map {m.name} is moved", say=say):
+        try:
+            for s in steps:
+                if not s.copy:
+                    continue
+                if source == FROM_DOWNLOAD and not in_cache(s.file):
+                    # Downloaded again rather than read off the device (checked against its
+                    # MD5 as any download); the copy on the device goes only at the end.
+                    report.downloaded += 1
+                    local = _download(m, session, progress, url_salt,
+                                      only={s.file.device_path})[s.file.device_path]
+                else:
+                    local = _a_checked_copy(s.file, s.source, s.source_path, m.name, progress,
+                                            session, url_salt, m, report)
+                told = byte_steps(progress, copying, before=copied, total=total)
+                checked = byte_steps(progress, checking, before=copied, total=total)
+                real = _write_checked(s.target, replace(s.file, device_path=s.target_path),
+                                      local, told, checked)
+                written.append(real)
+                report.copied.append(real)
+                copied += s.file.size
+        except BaseException:
+            for path in written:  # the source is as it was: what this move wrote goes
+                target.delete_quietly(path)
+            raise
+        gone = [s for s in steps if s.delete]
+        for n, s in enumerate(gone, 1):
+            # TRANSLATORS: a step of a map move: its files removed from where it was ("… · 1
+            # of 3")
+            say(Step(_("Removing {name} from where it was").format(name=m.name), n, len(gone)))
+            s.source.delete(s.source_path)
+            report.removed.append(s.source_path)
+    log.info("map move: %s to %s (from the %s), %d files copied (%d read from the device, "
+             "%d downloaded), "
+             "%d there already and checked, %d removed from where it was", m.name, to, source,
+             len(report.copied), report.read_from_device, report.downloaded,
+             len(report.verified), len(report.removed))
+    return report
+
+
+def _download(m: UniversalMap, session, progress, url_salt: str | None,
+              only: set[str] | None = None) -> dict[str, Path]:
     """Every file of `m` downloaded and checked against its MD5 (download.fetch; one in the
-    cache already is not downloaded again), by its path on the device."""
+    cache already is not downloaded again), by its path on the device; with `only`, those of
+    these paths alone (an install on the memory card leaves a shared layer where it is)."""
     local: dict[str, Path] = {}
+    files = [f for f in write_order(m) if only is None or f.device_path in only]
     # The map as a whole, by its name: the files are the server's and the device's own.
     downloaded = byte_steps(progress, downloading_text(m.name))
     # One bar for all the files of the map.
-    overall = download.Overall(m.size, downloaded) if downloaded is not None else None
-    for f in write_order(m):
+    overall = (download.Overall(sum(f.size for f in files), downloaded)
+               if downloaded is not None else None)
+    fetched, seconds = 0, 0.0  # downloaded now (not from the cache), for download_speed
+    for f in files:
         log.debug("map install: downloading %s (%s)", f.device_path, applog.size(f.size))
         urls = [h + f.url.lstrip("/") for h in m.hosts] if not f.url.startswith("http") else [f.url]
         if url_salt:
             urls = [download.tokenize(u, url_salt) for u in urls]
+        cached = in_cache(f)
+        started = time.monotonic()
         local[f.device_path] = download.fetch(urls, cache_file(f), f.size, f.md5, session=session,
                                               progress=overall.file() if overall else None)
+        if not cached:
+            fetched += f.size
+            seconds += time.monotonic() - started
         if overall:
             overall.finished(f.size)
+    note_download_speed(fetched, seconds)
     return local
+
+
+# --- how fast maps download, for the time a choice would take -------------------------------
+
+SPEED_FILE = "download-speed.json"
+# Downloads from this size on tell the speed (a small one is mostly its start).
+SPEED_FROM = 20 * 1000 * 1000
+
+
+def in_cache(f: MapFile) -> bool:
+    """The file is in the download cache at its size (its checksum is checked when it is used)."""
+    local = cache_file(f) if f.md5 else None
+    return local is not None and local.is_file() and local.stat().st_size == f.size
+
+
+def note_download_speed(size: int, seconds: float) -> None:
+    """A download of `size` bytes in `seconds` kept as the speed maps download at (averaged
+    with the one before); a small one says nothing."""
+    if size < SPEED_FROM or seconds <= 0:
+        return
+    speed = size / seconds
+    if (before := download_speed()) is not None:
+        speed = (speed + before) / 2
+    target = paths.data_dir() / SPEED_FILE
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"bytes_per_second": round(speed)}) + "\n", encoding="utf-8")
+    except OSError as e:
+        log.info("maps: the download speed not kept (%s)", type(e).__name__)
+        return
+    log.info("maps: downloads at about %s/s", applog.size(int(speed)))
+
+
+def download_speed() -> float | None:
+    """The speed maps last downloaded at (bytes a second); None before the first."""
+    try:
+        value = json.loads((paths.data_dir() / SPEED_FILE).read_text(encoding="utf-8"))
+        speed = float(value["bytes_per_second"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return speed if speed > 0 else None
 
 
 def _activation(m: UniversalMap, activate, say, strict: bool = False) -> list[tuple[str, str]]:
@@ -1244,36 +1874,107 @@ def cannot_remove_message(m: UniversalMap) -> str:
     return _("Map “{name}” cannot be removed").format(name=m.name)
 
 
+def on_card_message(m: UniversalMap) -> str:
+    """Why a map on both storages (its own .img files on the device and on its memory card), or
+    on a card that is not in the device, is neither installed, updated, moved nor removed."""
+    if m.location == cards.CARD_OUT:
+        # TRANSLATORS: error of a map install, update, move or removal; {name}: the map
+        return _("Map “{name}” is on the memory card, which is not in the device or cannot be "
+                 "read. Put the card back, then try again.").format(name=m.name)
+    # TRANSLATORS: error of a map install, update or removal; {name}: the map
+    return _("Map “{name}” is on the device and on its memory card: openExpress does not "
+             "change it until one of the two is removed, e.g. in Garmin Express.").format(
+        name=m.name)
+
+
+def no_card_message(m: UniversalMap) -> str:
+    # TRANSLATORS: error of a map install; {name}: the map
+    return _("Map “{name}” cannot be installed on the memory card: the device has no memory "
+             "card, or openExpress cannot tell which of its storages it is.").format(name=m.name)
+
+
+def other_storage_message(m: UniversalMap) -> str:
+    """A map on one storage asked to be installed on the other: moving is another step."""
+    if m.location == cards.CARD:
+        # TRANSLATORS: error of a map install; {name}: the map
+        return _("Map “{name}” is on the memory card already. openExpress does not move maps "
+                 "to the device yet.").format(name=m.name)
+    # TRANSLATORS: error of a map install; {name}: the map
+    return _("Map “{name}” is on the device already. openExpress does not move maps to the "
+             "memory card yet.").format(name=m.name)
+
+
+def install_target(m: UniversalMap, to: str | None = None) -> str:
+    """Where an install of `m` writes (cards.INTERNAL or cards.CARD): where its own files are
+    when it is on the device (an update stays there), else `to`, internal storage by default.
+    MapError for a map on one storage asked for the other, or on a card not in the device."""
+    if m.location == cards.CARD_OUT:
+        raise MapError(on_card_message(m))
+    if m.location in (cards.INTERNAL, cards.CARD):
+        if to is not None and to != m.location:
+            raise MapError(other_storage_message(m))
+        return m.location
+    return to or cards.INTERNAL
+
+
 def removal_refused(m: UniversalMap) -> str | None:
     """Why `m` is never removed, whatever the server allows: its files are in a folder the
-    device hides; None when nothing keeps it."""
+    device hides, or on both of its storages; None when nothing keeps it."""
+    if m.location in (cards.BOTH, cards.CARD_OUT):
+        return on_card_message(m)
     if m.unseen:
         # TRANSLATORS: error of a map removal: the device hides the folder of the map's files
         return _("Map “{name}” cannot be read: openExpress cannot see the folder of its files "
                  "on the device.").format(name=m.name)
     if m.hidden_folder is not None:
         # TRANSLATORS: error of a map removal; {folder}: a folder the device hides from the
-        # ordinary USB connection, e.g. .System
+        # file manager, e.g. .System
         return _("Map “{name}” cannot be removed: openExpress does not remove maps from "
                  "the folder {folder} yet.").format(name=m.name, folder=m.hidden_folder)
     return None
 
 
+def removal_places(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage,
+                   device=None) -> list[tuple[Storage, str]]:
+    """Where the files a removal of `m` takes are: its own files (none other maps use) on
+    whichever storage has them; and on the memory card, a copy of a shared file (e.g. the ETYP
+    .sid most maps use) that no other map on the card needs, while internal storage keeps one
+    for the others."""
+    card = cards.card_of(storage, device)
+    there = [(storage, p) for p in removal_list(all_maps, m, rewriting=False)
+             if storage.exists(p)]
+    if card is None:
+        return there
+    there += [(card, c) for p in removal_list(all_maps, m, rewriting=False)
+              for c in cards.card_paths(p, device) if card.exists(c)]
+    if m.location == cards.CARD:
+        for p in sorted(protected_files(all_maps, m) & {x.casefold() for x in m.all_paths}):
+            used_on_card = any(o is not m and o.keeps_files and o.location == cards.CARD
+                               and p in {x.casefold() for x in o.all_paths} for o in all_maps)
+            if used_on_card or not storage.exists(p):
+                continue
+            there += [(card, c) for c in cards.card_paths(p, device) if card.exists(c)]
+    return there
+
+
 def uninstall(m: UniversalMap, all_maps: list[UniversalMap], storage: Storage,
-              progress: Callable[[str], None] | None = None) -> list[str]:
+              progress: Callable[[str], None] | None = None, device=None) -> list[str]:
+    """The files of `m` removed (removal_places), from its memory card too when it has one
+    (`device`: its GarminDevice.xml, which names the card)."""
     progress = say_to(progress)
     if (why := removal_refused(m)) is not None:
         raise MapError(why)
     if not m.can_uninstall:
         raise MapError(cannot_remove_message(m))
     removed = []
-    there = [p for p in removal_list(all_maps, m, rewriting=False) if storage.exists(p)]
-    for n, p in enumerate(there, 1):
+    there = removal_places(m, all_maps, storage, device)
+    for n, (st, p) in enumerate(there, 1):
         # TRANSLATORS: a step of a map removal; {name}: the map ("… · 2 of 5")
         progress(Step(_("Removing {name}").format(name=m.name), n, len(there)))
-        log.debug("map removal: %s", p)
-        storage.delete(p)
+        log.debug("map removal: %s%s", p, "" if st is storage else " (memory card)")
+        st.delete(p)
         removed.append(p)
-    log.info("map removal: %s, %d files removed", m.name, len(removed))
+    log.info("map removal: %s, %d files removed (%d on the memory card)", m.name, len(removed),
+             sum(1 for st, _p in there if st is not storage))
     return removed
 

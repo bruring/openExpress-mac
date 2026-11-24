@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from fakes import descendants
+from fakes import descendants, preferences_window
 from fakes import window as stand_in
 
 from openexpress import installer
@@ -352,8 +352,6 @@ def test_the_choice_of_the_file_says_which_installer(in_the_window):
 
 @pytest.mark.needs_display
 def test_the_preferences_say_which_installer(monkeypatch):
-    import types
-
     from gi.repository import Adw
 
     from openexpress.gui.app import MainWindow
@@ -362,13 +360,7 @@ def test_the_preferences_say_which_installer(monkeypatch):
     groups, add = [], Adw.PreferencesPage.add
     monkeypatch.setattr(Adw.PreferencesPage, "add",
                         lambda page, group: groups.append(group) or add(page, group))
-    win = stand_in(busy=False, _action_buttons=[], _background_enabled=lambda: False,
-                   set_background=lambda on, done=None: None, choose_dll=lambda: None,
-                   error=lambda title, text: None, run_task=None, toast=None)
-    for name in ("_button", "_cache_group", "_ask_clear_cache", "_account_group",
-                 "_account_action"):
-        setattr(win, name, types.MethodType(getattr(MainWindow, name), win))
-    MainWindow.show_preferences(win)
+    MainWindow.show_preferences(preferences_window())
     (setup,) = [g for g in groups if g.get_title() == "Setup"]
     rows = [(w.get_title(), w.get_subtitle()) for w in descendants(setup)
             if isinstance(w, Adw.ActionRow)]
@@ -533,7 +525,7 @@ def test_the_wix_layout_still_gives_both(monkeypatch, tmp_path):
     assert found
 
 
-def test_the_two_new_texts_in_polish(tmp_path):
+def test_the_refusals_of_an_installer_in_polish(tmp_path):
     from openexpress import i18n
 
     other = tmp_path / "inny.exe"

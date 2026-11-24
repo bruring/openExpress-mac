@@ -21,8 +21,8 @@ from openexpress import __version__, activities, backup, engine
 from openexpress import settings as settings_mod
 from openexpress.device.found import DeviceSummary, FoundDevice
 from openexpress.device.storage import LocalStorage
-from openexpress.i18n import caption
 from openexpress.device.xmldevice import parse
+from openexpress.i18n import caption
 from openexpress.progress import Step, copying_text, downloading_text
 
 UNIT = "1234567890"  # conftest.DEVICE_XML
@@ -37,7 +37,9 @@ CONTRACT = {
     "cancel", "shutdown",
     "strava.upload",  # besides the contract: as `strava upload`
     "backups.list", "activities.track",  # what the app asked for after it
-    "account.readings"}
+    "account.readings",
+    "maps.move",  # a map between the device's own storage and its memory card
+    "maps.card_reader"}  # the device's card in this computer's card reader
 
 
 class FakeDevices:
@@ -961,6 +963,21 @@ def test_progress_steps_are_put_in_phases_with_what_they_move_as_the_item():
     assert engine.phase_of(copying_text("GPS"), "updates.install") == ("copying", "GPS")
     assert engine.phase_of("Copying to the backup", "device.backup") == (
         "backup", "Copying to the backup")
+
+
+@pytest.mark.parametrize("step, unit", [
+    (Step(downloading_text("TopoActive"), 1024, 4096, in_bytes=True), "bytes"),
+    (Step("Copying to the backup", 3, 25, bytes_done=120, bytes_total=1200), "bytes"),
+    (Step("Copying to the backup", 3, 25), None),  # files counted: no speed
+])
+def test_a_progress_in_bytes_says_so_for_the_speed_the_app_shows(step, unit):
+    import io
+
+    out = io.StringIO()
+    eng = engine.Engine(out)
+    eng.progress_for(engine.Request(1, "device.backup", {}))(step)
+    (event,) = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert event["event"] == "progress" and event["params"].get("unit") == unit
 
 
 def test_a_request_writing_to_the_device_stops_between_files_never_inside_one():

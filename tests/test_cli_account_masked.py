@@ -65,3 +65,31 @@ def test_login_masks_the_account(xdg, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "Signed in as t…b." in out and "tomek" not in out
     assert store.load().display == "tomek_b"  # kept whole: the window shows it
+
+
+def test_a_profile_not_read_is_a_warning_filtered_as_the_log(xdg, capsys, monkeypatch):
+    """Signed in all the same; the words of an error nobody foresaw are filtered as the log is
+    (a path as <path>)."""
+    from pathlib import Path
+
+    from fakes import FakeKeychain
+
+    from openexpress.auth import sso
+    from openexpress.platform import keychain
+
+    # On macOS the sign-in goes to the Keychain: a fake one, so that its own warning (the
+    # Keychain the tests may not reach) is not among the words checked.
+    keychain.use_backend(FakeKeychain())
+
+    def profile():
+        raise RuntimeError(f"cannot read {Path.home()}/made-up")
+
+    monkeypatch.setattr(sso, "login_manual", lambda settings: types.SimpleNamespace(
+        ticket="ST-made-up", service="https://made.up/"))
+    client = types.SimpleNamespace(
+        auth=None, exchange_ticket=lambda ticket, service: ("token", "secret"),
+        user_profile=profile)
+    monkeypatch.setattr(cli, "make_client", lambda settings, need_auth: client)
+    assert main(["login", "--manual"]) == 0
+    assert capsys.readouterr().err == (
+        "Warning: could not fetch the profile (cannot read <path>)\n")

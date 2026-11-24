@@ -455,6 +455,93 @@ def test_every_storage_is_logged_and_the_others_are_kept_on_the_one_opened(usb, 
     assert "MADEUPSERIAL" not in line and "3000000001" not in line
 
 
+def _with_card(usb):
+    """A handheld (a GPSMAP H1i Plus) with a memory card: its second storage, RemovableRAM."""
+    fake = _fake()
+    fake.add_storage(0x00020001, "Memory Card", 128_000_000_000, 127_000_000_000,
+                     kind=ptp.STORAGE_REMOVABLE_RAM)
+    usb.device = fake
+    return fake
+
+
+def test_a_memory_card_is_opened_beside_the_internal_storage_on_its_session(usb):
+    _with_card(usb)
+    st = mac_storage.open_device_storage()
+    (card,) = st.others
+    assert (card.description, card.removable, card.store) == ("Memory Card", True, 0x00020001)
+    assert st.removable is False
+    # One session, one lock: a transaction on the card never starts within one on internal.
+    assert card._session is st._session and card._lock is st._lock
+    assert card.free_space() == 127_000_000_000 and card.capacity() == 128_000_000_000
+    assert card.listdir("") == []
+
+
+def test_the_card_closes_with_the_device_and_alone_closes_nothing(usb):
+    fake = _with_card(usb)
+    st = mac_storage.open_device_storage()
+    card = st.others[0]
+    card.close()
+    assert card.closed and not st.closed and fake.session_open  # the session is the device's
+    assert st.exists("GARMIN/GarminDevice.xml")
+    with pytest.raises(DeviceError, match="closed"):
+        card.listdir("")
+    st.close()
+    assert not fake.session_open
+
+
+def test_the_card_is_closed_when_the_device_is(usb):
+    _with_card(usb)
+    st = mac_storage.open_device_storage()
+    card = st.others[0]
+    st.close()
+    assert card.closed
+    with pytest.raises(DeviceError, match="closed"):
+        card.listdir("")
+    assert card.free_space() is None  # as for the device's own storage: not known
+
+
+def test_a_device_that_stops_responding_on_its_card_stops_for_both(usb):
+    fake = _with_card(usb)
+    st = mac_storage.open_device_storage()
+    card = st.others[0]
+    card.refresh()
+    fake.silent = True
+    with pytest.raises(DeviceNotResponding):
+        card.listdir("Garmin")
+    assert card.stalled and st.stalled and fake.closed
+    with pytest.raises(DeviceNotResponding):
+        st.listdir("GARMIN")  # at once: nothing more is asked of the device
+
+
+def test_a_refresh_drops_what_was_listed_on_the_card_too(usb):
+    _with_card(usb)
+    st = mac_storage.open_device_storage()
+    card = st.others[0]
+    card.listdir("")
+    card.free_space()
+    assert "" in card._folders and card._space_told is not None
+    st.refresh()
+    assert card._folders == {} and card._space_told is None
+
+
+def test_a_card_taken_out_and_put_back_is_seen_at_the_next_refresh(usb):
+    """The session stays open (the engine keeps it between requests): the device lists its
+    storages anew, and a refresh asks it."""
+    fake = _with_card(usb)
+    st = mac_storage.open_device_storage()
+    card = st.others[0]
+    del fake.extra_storages[0x00020001]  # taken out
+    st.refresh()
+    assert st.others == () and st.other_storages == () and card.closed
+    fake.add_storage(0x00020001, "Memory Card", 128_000_000_000, 127_000_000_000,
+                     kind=ptp.STORAGE_REMOVABLE_RAM)  # put back
+    st.refresh()
+    (back,) = st.others
+    assert (back.description, back.removable, back.closed) == ("Memory Card", True, False)
+    assert back._lock is st._lock and st.other_storages == ("Memory Card",)
+    assert back.free_space() == 127_000_000_000
+
+
 def test_a_single_storage_device_has_no_other_storages(usb, caplog):
     with caplog.at_level("INFO", logger="openexpress"):
         st = mac_storage.open_device_storage()

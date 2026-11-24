@@ -7,6 +7,7 @@ import pytest
 import requests
 from fakes import (
     device_session,
+    no_answer,
     page_window,
     replace_in_window,
     software_update,
@@ -269,10 +270,10 @@ def test_sync_upload_errors_give_exit_code_1(device_root, xdg, fake_client, caps
 def test_network_error_is_a_clean_user_error(device_root, xdg, fake_client, capsys):
     """The upload settings not fetched: the dry run says why in one line (the uploads
     skipped, the rest of the plan shown), no traceback."""
-    fake_client["client"] = FakeClient(fail_config=requests.ConnectionError("boom"))
+    fake_client["client"] = FakeClient(fail_config=no_answer(requests.ConnectionError("boom")))
     assert main(["--path", str(device_root), "sync"]) == 0
     said = capsys.readouterr()
-    assert "could not be reached (boom)." in said.out
+    assert "could not be reached (no connection)." in said.out
     assert "Traceback" not in said.out + said.err
 
 
@@ -323,6 +324,13 @@ def test_music_remove_rejects_short_patterns(device_root, xdg, capsys, pattern):
     assert "at least 3 characters" in capsys.readouterr().err
 
 
+def test_a_short_pattern_is_refused_before_the_device_is_opened(monkeypatch, xdg, capsys):
+    """A mistake of the command line: said at once, without waiting for the device."""
+    monkeypatch.setattr(cli, "open_device", lambda args: pytest.fail("the device was opened"))
+    assert main(["music", "remove", "ab", "--apply"]) == 1
+    assert "at least 3 characters" in capsys.readouterr().err
+
+
 # --- desktop / systemd quoting -----------------------------------------------------------
 
 
@@ -340,7 +348,7 @@ def test_files_quote_paths_with_spaces_and_percent(xdg, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "executable", "/opt/my py%/bin/python3")
     monkeypatch.setattr(desktop, "_source_root", lambda: Path("/home/u/My Code/100%"))
     out = {p.name: text for p, text in desktop.files().items()}
-    entry = out[f"{desktop.DESKTOP_ID}.desktop"]
+    entry = out[f"{desktop.SOURCE_ID}.desktop"]
     exec_line = next(line for line in entry.splitlines() if line.startswith("Exec="))
     assert exec_line == ('Exec=env "PYTHONPATH=/home/u/My Code/100%%" '
                          '"/opt/my py%%/bin/python3" -m openexpress gui')
@@ -420,13 +428,11 @@ def test_cli_remove_message(xdg, monkeypatch, capsys, tmp_path):
 # --- GUI logic without a display ---------------------------------------------------------
 
 
-def test_gui_helpers():
+def test_removed_files_are_counted_in_the_plural():
     from openexpress.gui.app import MainWindow
 
     assert MainWindow._removed_files(1) == "Removed 1 file"
     assert MainWindow._removed_files(3) == "Removed 3 files"
-    state = types.SimpleNamespace(available_slots=2, available_space=2048)
-    assert MainWindow._apps_space(state) == "2 free slots\u00a0· 2.0\u00a0kB free"
 
 
 class _Sec:
@@ -913,10 +919,11 @@ def test_nothing_can_be_said_without_a_size_or_an_md5(offered, monkeypatch):
         raise DeviceError("the device went away")
 
     # Read before and the same size and time: its MD5 is known without reading it again.
-    st.read = broken
+    st.read = st.read_at = lambda path, told=None: broken(path)
     assert upd.mark_present(st, [u])[0].on_device
     # Never read: not known to be there, offered.
     monkeypatch.setattr(upd, "_md5_read", {})
+    monkeypatch.setattr(upd, "_kept_md5", dict)  # nor kept for the next window
     assert not upd.mark_present(st, [u])[0].on_device
     # Its size and time not known either.
     st.info = broken

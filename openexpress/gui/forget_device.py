@@ -50,11 +50,11 @@ class ForgetDevice:
             return
         kept = forget.kept(unit)
         body = _("openExpress forgets what it keeps of this device on this computer: what was "
-                 "uploaded from it, its last sync, its connection log, the maps of your "
-                 "own copied to it and the copies of its diagnostic files. "
+                 "uploaded from it, its last sync, its connection log, your own maps "
+                 "copied to it and the copies of its diagnostic files. "
                  "Nothing changes on the device or on your Garmin account.\n\n"
-                 "Connected again, it is a new device: its first sync asks again whether to "
-                 "upload everything or new data only.")
+                 "When it is connected again, it counts as a new device: its first sync asks "
+                 "again whether to upload everything or new data only.")
         if kept.pending:
             body += "\n\n" + str(forget.PendingFiles(kept.pending))
         # What is ticked (data, no widget) goes with the ticks and the answer; the window

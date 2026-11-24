@@ -17,6 +17,9 @@ from openexpress.i18n import _, duration_text, relative_time
 
 # The battery states of a sensor that ask for a new battery or a charge: first in the list.
 LOW = frozenset({"LOW", "CRITICAL"})
+# The days of the solar gain told by default, today among them: the window's row Solar
+# Charging and `openexpress solar`.
+SOLAR_DAYS = 7
 # A sensor's last connection as the account writes it: 2026-10-21T09:41:07.0
 _MOMENT = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?")
 

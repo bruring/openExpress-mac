@@ -2,7 +2,7 @@
 
 | Device | Connection | Checked by | What works | Report: system, version |
 |---|---|---|---|---|
-| fēnix 8 (47 mm, Solar) | MTP | the developer, on its Garmin account; [#13](https://github.com/TomaszBojanowski/openExpress/issues/13) | sync, software update downloads, a component update, maps, Connect IQ apps, music, activities, courses, Device Status and satellite data (experimental): [what was checked](#fēnix-8-47-mm-solar). In #13 it works once gvfs-mtp is installed and Dolphin's MTP service no longer holds the watch (see [System requirements](https://github.com/TomaszBojanowski/openExpress#system-requirements)); map downloads and copying work | developer: Fedora 44, GNOME; courses: Fedora 45, GNOME, the version from source after 0.8.7; #13: CachyOS, KDE Plasma, Flatpak 0.6.15 |
+| fēnix 8 (47 mm, Solar) | MTP | the developer, on its Garmin account; [#13](https://github.com/TomaszBojanowski/openExpress/issues/13) | sync, software updates (the system software and components, also in folders the watch hides), maps, Connect IQ apps, music, activities, courses, Device Status and satellite data (experimental): [what was checked](#fēnix-8-47-mm-solar). In #13 it works once gvfs-mtp is installed and Dolphin's MTP service no longer holds the watch (see [System requirements](https://github.com/TomaszBojanowski/openExpress#system-requirements)); map downloads and copying work | developer: Fedora 44, GNOME; courses: Fedora 45, GNOME, the version from source after 0.8.7; #13: CachyOS, KDE Plasma, Flatpak 0.6.15 |
 | Edge 1050 | MTP | the developer, on the same account | sync, system software updates, the primary training device, Connect IQ apps, courses, Device Status and satellite data (experimental): [what was checked](#edge-1050) | developer: Fedora 44, GNOME; the second update and courses: Fedora 45, GNOME, Flatpak 0.8.7 and the version from source after it |
 | Varia RTL515 (part 006-B3592-03) | USB drive | the developer; [#9](https://github.com/TomaszBojanowski/openExpress/issues/9) | detected as a USB drive; sign-in and checking for software updates; shown on the start page as the remembered Varia before its drive is mounted; a component update copied to it and the drive ejected in the window | developer: Fedora 44, GNOME on Wayland; #9: Linux Mint 22.3, Cinnamon on X11, Flatpak 0.6.4 |
 | epix (Gen 2; part 006-B3943) | MTP | the developer | read-only commands and backup; it is not registered to the account used for testing, so sync and Connect IQ apps are refused with a message, and the window says why | developer: Fedora 44, GNOME |
@@ -12,12 +12,16 @@
 | fēnix 7 (Sapphire Dual Power; part 006-B3909-00) | MTP | [#6](https://github.com/TomaszBojanowski/openExpress/issues/6) | detected; sign-in, checking for software updates, installing a system software update, Garmin maps (install, update or remove) and maps of your own work | Fedora 44, GNOME on Wayland, Flatpak 0.6.2 |
 | fēnix 7X (Sapphire Solar) | MTP | a user on Reddit | software and map updates work | Fedora |
 | fēnix 7S (Sapphire) | MTP | a user on Reddit | map install works | SteamOS on a Steam Deck |
+| fēnix 6 Pro (part 006-B3290-00) | MTP | [#74](https://github.com/TomaszBojanowski/openExpress/issues/74) | detected; sync with Garmin Connect, software updates, maps, Connect IQ apps and music work (software 28.02) | CachyOS, KDE on Wayland, Flatpak 0.12.1 |
 | fēnix 5X (part 006-B2604-00) | MTP | [#27](https://github.com/TomaszBojanowski/openExpress/issues/27) | detected; software updates and the downloads of a sync work (software 19.10); uploads, maps and Connect IQ apps not tried yet | Ubuntu 24.04, GNOME on Wayland, Flatpak 0.8.1 |
 | Instinct 3 – 45mm Tactical (part 006-B4585-00) | MTP | [#21](https://github.com/TomaszBojanowski/openExpress/issues/21) | detected; sync works, also of an activity with GPS. With Stealth mode on, the watch keeps no GPS track of an activity, so only its totals reach Garmin Connect | Kubuntu 26.04, KDE on Wayland, Flatpak 0.7.0 |
 | Edge 1040 (part 006-B3843-00) | MTP | [#8](https://github.com/TomaszBojanowski/openExpress/issues/8), [#10](https://github.com/TomaszBojanowski/openExpress/issues/10) | detected; checking for software updates, installing a Garmin map (Trailforks) and installing and removing Connect IQ apps work; sync not tried. In #10 map updates worked too; the sign-in window works also when the system's language is missing in the Flatpak (see [The Flatpak and the language of your system](troubleshooting.md#the-flatpak-and-the-language-of-your-system)) | #8: Linux Mint 22.3, Cinnamon on X11, Flatpak 0.6.1; #10: Ubuntu 26.04, KDE on X11, Flatpak 0.6.7 |
 | Edge 540 (part 006-B4061-00) | MTP | [#18](https://github.com/TomaszBojanowski/openExpress/issues/18), [#28](https://github.com/TomaszBojanowski/openExpress/issues/28) | detected; sync, software updates and maps work. In #28, on Ubuntu 22.04 (flatpak 1.12), a software update and a map install from the Flatpak work (software 30.18) | #18: Fedora 44, KDE on Wayland, Flatpak 0.6.20; #28: Ubuntu 22.04, GNOME on Wayland, Flatpak 0.8.6 with the reporter's fix |
-| Drive 53 EX (part 006-B4449-00) | MTP | a user; [#42](https://github.com/TomaszBojanowski/openExpress/issues/42) | detected; its hidden `.System` folder read through openExpress's own USB session; the device software 8.50 → 9.00 and the time zone map 43.00 written there from the command line and installed by the device; a map update, City Navigator North America NT 2027.20 (8.3 GB), installed there from the command line with the trial option, and the device then listed 2027.20; not synced with Garmin Connect, as Garmin's server does not take its data | Debian 13, the version from source (test branches) |
+| Drive 53 EX (part 006-B4449-00) | MTP | a user; [#42](https://github.com/TomaszBojanowski/openExpress/issues/42) | detected; its `.System` folder, hidden from the file manager, read over a direct USB connection; the device software 8.50 → 9.00 and the time zone map 43.00 written there from the command line and installed by the device; a reinstall of the time zone map from the window; a map update, City Navigator North America NT 2027.20 (8.3 GB), installed there from the command line with the trial option, and the device then listed 2027.20; not synced with Garmin Connect, as Garmin's server does not take its data | Debian 13, the version from source (test branches; the reinstall in the window and the map update: main) |
 | Venu 2S (part 006-B3704-00) | MTP | [#60](https://github.com/TomaszBojanowski/openExpress/issues/60) | detected; read-only commands only, as the watch is on another person's Garmin account: its information, files (each data type found) and activities read, no maps on it, and the check for software updates lists its eight font updates (software 19.05 when reported); nothing installed or synced, and Connect IQ apps not checked | Ubuntu 26.04, openExpress 0.11.1 from source |
+| Venu X1 (part 006-B4603-00) | MTP | [#70](https://github.com/TomaszBojanowski/openExpress/issues/70) | detected; sync with Garmin Connect, software updates (the watch software and components, also into folders the watch hides, written over a direct USB connection) and Garmin maps work (software 19.23); Connect IQ apps and music not tried yet | Fedora 45, KDE Plasma on Wayland, Flatpak 0.12.3 |
+| Forerunner 970 (part 006-B4565-00) | MTP | [#72](https://github.com/TomaszBojanowski/openExpress/issues/72) | detected; sync with Garmin Connect, software updates, maps, Connect IQ apps and music work (software 19.23) | CachyOS, KDE on Wayland, Flatpak 0.12.1 |
+| vívoactive 5 (part 006-B4426-00) | MTP | [#73](https://github.com/TomaszBojanowski/openExpress/issues/73) | detected; software updates and music work (software 17.05); sync and Connect IQ apps not tried, as the watch is not on the reporter's Garmin account; it lists no maps for exchange with a computer | CachyOS, KDE on Wayland, Flatpak 0.12.1 |
 | inReach Mini 2 (part 006-B3968-00) | USB drive | [#11](https://github.com/TomaszBojanowski/openExpress/issues/11) | connects as a USB drive: software updates work (the device installs one once its drive is ejected properly); not synced: Garmin's update server says that Garmin Connect does not take its data ([#12](https://github.com/TomaszBojanowski/openExpress/issues/12)) | Linux Mint 22.3, Cinnamon on X11, Flatpak 0.6.4 |
 | Forerunner 55 (part 006-B3869-00) | USB drive | [#19](https://github.com/TomaszBojanowski/openExpress/issues/19) | connects as a USB drive: detected; software updates and sync with Garmin Connect work (software 11.03 when reported) | Fedora 44, KDE on Wayland, Flatpak 0.6.20; sync: version not given |
 | Forerunner 920XT (part 006-B1765-00) | USB drive | [#20](https://github.com/TomaszBojanowski/openExpress/issues/20) | connects as a USB drive: software updates work (time-zone map updated), sync not confirmed yet | Fedora 44, KDE on Wayland, Flatpak 0.6.20 |
@@ -43,7 +47,11 @@ Checked by the developer over MTP:
   sync then wrote to the watch).
 - Software updates downloaded. A component update (a map support file) installed from the window
   in the Flatpak: **Update ready** until the watch was unplugged, up to date once it was plugged
-  in again, and no longer offered.
+  in again, and no longer offered. The system software 23.39 → 24.20 installed from the window.
+  Voice prompts (154 MB) and a font, which the watch keeps in folders hidden from the file
+  manager, installed over a direct USB connection (the voice prompts on the
+  command line, the font in the window, and the font installed again in the window over the
+  file there): the watch took each once unplugged, and they are no longer offered.
 - Garmin maps: install, update and removal, on the command line and in the window. In the
   Flatpak a Garmin Ski Map update, with the new version on the watch after it was unplugged and
   plugged in again.
@@ -76,8 +84,8 @@ Checked by the developer over MTP:
   kind of file; Free Up Space removed five older memory dumps (44.9 MB) after copying them, the
   checksums of the copies matching, and the newest dump stayed; the page from the records once
   the watch was unplugged, and the ordinary page again once it was plugged in.
-- Not tested on this watch yet: updating a Connect IQ app, installing a software update, the
-  button **Copy Crash Logs** of the Device Status page (over PTP).
+- Not tested on this watch yet: updating a Connect IQ app, **Copy** in the row **Crash Logs** of
+  the Device Status page (over a direct USB connection).
 
 ### Edge 1050
 
@@ -97,8 +105,8 @@ Checked by the developer over MTP, on the same account:
     count of saved locations is the same as the Edge's;
   - the courses were listed as copied by openExpress and removed, on the command line and in the
     window.
-- Satellite data (experimental): the Edge keeps `GPES.bin` where the ordinary USB connection
-  shows it, and no `GPE.bin`. With **Satellite Data** turned on, a sync wrote `GPES.bin` as
+- Satellite data (experimental): the Edge keeps `GPES.bin` where the file manager shows it, and
+  no `GPE.bin`. With **Satellite Data** turned on, a sync wrote `GPES.bin` as
   Garmin's server sends it, and the Edge unpacked it by itself about two minutes after it was
   unplugged. Plugged in again within a minute, the file still waited, not unpacked yet, and the
   switch stayed on.
@@ -158,11 +166,9 @@ and in the version from source:
 - Once its drive is ejected, a watch in this mode switches to its Garmin USB mode, which
   openExpress does not use: unplug the cable and plug it in again to use it again.
 
-Tested in this mode: by the developer on the Varia RTL515 (also copying a component update and
-ejecting the drive in the window); users report software updates working on an inReach Mini 2, a
-Forerunner 55, a Forerunner 920XT, a Forerunner 45 and an Edge 820, and sync on an Instinct 2S, a
-Forerunner 45 and a Forerunner 55 (see the table). Reports from other devices in mass storage
-mode are welcome.
+Tested in this mode by the developer on the Varia RTL515 (also copying a component update and
+ejecting the drive in the window), and by users on the devices marked *USB drive* in the table.
+Reports from other devices in mass storage mode are welcome.
 
 ### HID only
 

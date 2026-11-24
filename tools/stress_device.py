@@ -45,7 +45,7 @@ from openexpress import applog  # noqa: E402
 from openexpress.device import gio_storage  # noqa: E402
 from openexpress.device.storage import DeviceError, RemountFailed  # noqa: E402
 from openexpress.device.xmldevice import parse  # noqa: E402
-from openexpress.paths import APP_ID  # noqa: E402
+from openexpress.paths import APP_ID, SOURCE_APP_ID  # noqa: E402
 
 Gio, GLib = gio_storage.Gio, gio_storage.GLib
 
@@ -58,7 +58,9 @@ SHOWN_S = 5.0  # how long the volume monitor may take to show a mount or an unmo
 XML = "GARMIN/GarminDevice.xml"
 PROC = Path("/proc")
 NAMES = ((APP_ID, "the window of openExpress"),
-         (APP_ID + ".Watch", "the background service of openExpress"))
+         (APP_ID + ".Watch", "the background service of openExpress"),
+         (SOURCE_APP_ID, "the window of openExpress (source)"),
+         (SOURCE_APP_ID + ".Watch", "the background service of openExpress (source)"))
 READING = frozenset({"storages", "free_space", "info", "children", "lookup"})
 WRITES = ("_write", "_write_file", "_delete", "_mkdir")
 STEPS = ("unmount", "PTP session open", "PTP reads", "mount again", "mount", "open", "cycle")
@@ -281,15 +283,17 @@ def instrumented(summary: Summary, answers: list, short_timeout: float | None):
                 summary.time(step, time.monotonic() - started)
         return call
 
-    def noting_wait(start, timeout_s, what, name="operation", context=None, quiet=False):
+    def noting_wait(start, timeout_s, what, name="operation", context=None, quiet=False,
+                    renewable=False):
         waiting = threading.current_thread().name
 
-        def begin(done, cancellable):
+        def begin(done, cancellable, *alive):
             def noted(finish):
                 answers.append((name, waiting, threading.current_thread().name))
                 done(finish)
-            start(noted, cancellable)
-        return saved["_wait"](begin, timeout_s, what, name, context=context, quiet=quiet)
+            start(noted, cancellable, *alive)
+        return saved["_wait"](begin, timeout_s, what, name, context=context, quiet=quiet,
+                              renewable=renewable)
 
     gio_storage._unmount = timed("_unmount", "unmount")
     gio_storage._remount = timed("_remount", "mount again")

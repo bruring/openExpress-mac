@@ -677,9 +677,7 @@ def _update(unit_id: int, change: Callable[[KnownDevice], KnownDevice]
 def _locked():
     """One reader-changer-writer of devices.json at a time, in any process; the system lets go
     of it when the process ends. Reading alone needs no lock: the file is replaced whole."""
-    folder = paths.data_dir()
-    paths.make_dir(folder)
-    with paths.locked(folder / LOCK_NAME):
+    with paths.folder_locked(paths.data_dir(), LOCK_NAME):
         yield
 
 

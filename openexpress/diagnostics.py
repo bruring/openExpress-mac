@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from openexpress import applog, paths
+from openexpress.device import whole_reads
 from openexpress.device.storage import DeviceError, DeviceNotResponding, Entry, Storage
 from openexpress.device.xmldevice import GarminDevice
 from openexpress.errors import UserFacingError
@@ -206,10 +207,16 @@ def read_errors(storage: Storage, at: dict[str, int] | None = None,
     return sorted(out, key=lambda e: e.at or datetime.min, reverse=True)
 
 
+def is_recent(at: datetime, now: datetime) -> bool:
+    """Whether a time by the device's clock is of the last 30 days (a day ahead allowed): the
+    rule of the page Device Status and of the log alike."""
+    return now - RECENT <= at <= now + timedelta(days=1)
+
+
 def last_crash(entries: list[ErrorEntry], now: datetime) -> ErrorEntry | None:
     """The newest "RTL Trap" of the last 30 days (by the device's clock); None: none."""
     for e in entries:
-        if e.is_crash and e.at is not None and now - RECENT <= e.at <= now + timedelta(days=1):
+        if e.is_crash and e.at is not None and is_recent(e.at, now):
             return e
     return None
 
@@ -304,8 +311,7 @@ def _sha(data: bytes) -> str:
 def _private(where: Path) -> None:
     """The folder of the copies and its own folders: for their owner alone (0700)."""
     for folder_ in (where, where / "objects", where / "snapshots"):
-        paths.make_dir(folder_)
-        folder_.chmod(0o700)
+        paths.make_private_dir(folder_)
 
 
 def _snapshot_order(path: Path) -> tuple[str, int]:
@@ -391,18 +397,19 @@ def rotate(where: Path, copies: int = COPIES_KEPT, limit: int | None = None
     refers to. Returns the copies and the bytes kept."""
     limit = LIMIT if limit is None else limit
     snaps = _snapshots(where)
+    loaded = {p: _load(p) for p in snaps}  # each read once
     removed = 0
 
     def referenced(kept: list[Path]) -> dict[str, int]:
         out: dict[str, int] = {}
         for p in kept:
-            for item in _load(p).get("files", {}).values():
+            for item in loaded[p].get("files", {}).values():
                 if isinstance(item, dict) and isinstance(item.get("sha256"), str):
                     out[item["sha256"]] = int(item.get("size") or 0)
         return out
 
-    for part in ([p for p in snaps if _load(p).get("kind") == "dumps"],
-                 [p for p in snaps if _load(p).get("kind") != "dumps"]):
+    for part in ([p for p in snaps if loaded[p].get("kind") == "dumps"],
+                 [p for p in snaps if loaded[p].get("kind") != "dumps"]):
         while len(part) > max(1, copies) or (len(part) > 1
                                              and sum(referenced(part).values()) > limit):
             oldest = part.pop(0)
@@ -550,7 +557,7 @@ def copy_dumps(device: GarminDevice, storage: Storage, now: datetime | None = No
     head = _("Copying memory dumps")
     for n, (path, entry) in enumerate(chosen, 1):
         say_to(progress)(Step(head, n, len(chosen)))
-        data = storage.read(path)
+        data = whole_reads.whole_file(storage, path, entry.size)
         report.add(_keep_file(where, files, report, path, data, entry.mtime)[1])
     if files and files != _last(where, "dumps").get("files"):
         _save(where, "dumps", files, {}, now, device.software_version_str)
@@ -619,12 +626,20 @@ def may_have_hidden_logs(storage: Storage, shown: bool | None = None) -> bool:
     return not any(storage.exists(p) for p in EVENT_LOGS)
 
 
+def hidden_now(device: GarminDevice, storage: Storage, shown: bool | None = None) -> bool:
+    """Whether the device connected has crash logs that only Copy Crash Logs reads: its
+    connection (may_have_hidden_logs, with `shown`), unless a copy made since found none
+    (hidden_logs_to_copy)."""
+    return hidden_logs_to_copy(may_have_hidden_logs(storage, shown), device.unit_id,
+                               bool(getattr(storage, "test_drive", False)))
+
+
 def ptp_unavailable_text(storage: Storage) -> str:
     if storage.usb_blocked():
         return _("The Flatpak version has no access to USB devices, so it cannot read the "
                  "hidden crash logs. Give it the permission (see the README) or use the "
                  "version from source.")
-    return _("openExpress cannot open its own USB session with this device, so it cannot "
+    return _("openExpress cannot open a direct USB connection to this device, so it cannot "
              "read the hidden crash logs.")
 
 
@@ -909,8 +924,7 @@ def read_now(device: GarminDevice, storage: Storage) -> AtOpen:
     present: list[str] = []
     entries = read_errors(storage, missed=missed, present=present)
     dumps = dumps_or_none(storage)
-    hidden = hidden_logs_to_copy(may_have_hidden_logs(storage), device.unit_id,
-                                 bool(getattr(storage, "test_drive", False)))
+    hidden = hidden_now(device, storage)
     return AtOpen(entries, dumps or [], hidden, errors_known=not missed, error_logs=len(present),
                   dumps_known=dumps is not None)
 
@@ -946,8 +960,7 @@ def at_open(device: GarminDevice, storage: Storage, now: datetime | None = None)
                           missed=missed, present=present)
     if seen is not None:
         dumps = seen.dumps
-        hidden = hidden_logs_to_copy(may_have_hidden_logs(storage, shown=seen.event_logs),
-                                     device.unit_id, bool(getattr(storage, "test_drive", False)))
+        hidden = hidden_now(device, storage, shown=seen.event_logs)
     else:
         dumps, hidden = [], False
     found = AtOpen(entries, dumps, hidden, errors_known=not missed, error_logs=len(present),

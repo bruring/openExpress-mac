@@ -23,6 +23,8 @@
       <li>Copy music, podcasts and audiobooks, with playlists</li>
       <li>See each activity on its own page: the track on a map, charts, laps, heart rate zones and training effect</li>
       <li>See the device's crashes, software updates and storage, and free up space taken by older memory dumps and updates it did not install</li>
+      <li>Keep the GPS satellite data of some devices current without the phone (experimental)</li>
+      <li>See the batteries of the sensors on your Garmin Connect account and the solar charging of a device</li>
       <li>Make backups of the device</li>
       <li>Sync in the background whenever the device is connected</li>
       <!-- TRANSLATORS: a feature in the description for software centres: the program sends no
@@ -54,8 +56,12 @@
       <image>https://raw.githubusercontent.com/TomaszBojanowski/openExpress/main/docs/screenshots/start.png</image>
     </screenshot>
     <screenshot>
-      <caption>Software updates, with a beta system update offered for the device</caption>
+      <caption>Software updates: the device software and two more updates offered for it</caption>
       <image>https://raw.githubusercontent.com/TomaszBojanowski/openExpress/main/docs/screenshots/updates.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The device page: the sensors on the Garmin Connect account with their batteries, and solar charging</caption>
+      <image>https://raw.githubusercontent.com/TomaszBojanowski/openExpress/main/docs/screenshots/account.png</image>
     </screenshot>
     <screenshot>
       <caption>Maps on the device and free maps to install</caption>
@@ -99,6 +105,134 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.13.1" date="2026-11-24">
+      <description translate="no">
+        <p>A maintenance release: clearer messages in the window and on the command line, and three more devices on
+        the list.</p>
+        <ul>
+          <li><em>Updates.</em> When an update is ready, the page has a short heading, "Update Ready", with what to do
+          under it; an update for a folder the device hides says what it needs, a direct USB connection.</li>
+          <li><em>Messages.</em> A busy device now says what is under way and what to do, and on the command line a
+          failed download is said once, without technical words.</li>
+          <li><em>Maps.</em> The Maps page and the command line say plainly when a device hides the folder a map
+          belongs in, and a failed copy of an own map says what became of the incomplete file.</li>
+          <li><em>Music and Apps.</em> Expandable rows are named by what they hold, and before a copy, files already
+          on the device are mentioned only when there are some.</li>
+          <li><em>Device Status.</em> Every row of Crashes and Updates shows its date and hour, the question before
+          older memory dumps are removed says what stays and what is lost, and a device report says how the device is
+          connected.</li>
+          <li><em>Forerunner 970, vívoactive 5 and fēnix 6 Pro</em> added to the list of devices reported working by
+          users.</li>
+        </ul>
+        <p>Thanks to isoarpa for the three device reports (#72, #73, #74) and to prajzner for the Czech
+        translation.</p>
+      </description>
+    </release>
+    <release version="0.13.0" date="2026-11-22">
+      <description translate="no">
+        <p>openPath, faster reading of large files, and clearer server errors.</p>
+        <ul>
+          <li><em>openPath.</em> openPath is openExpress's own direct USB connection to the device. Through it,
+          openExpress reads and writes what the file manager does not show: hidden folders and files such as voice
+          packages and fonts, hidden crash logs and Connect IQ apps. While it works, the device leaves the file
+          manager for a moment. openPath is not new in this release: it is the name for the direct USB connection
+          openExpress already uses – for Connect IQ apps since its early versions, and since 0.12.1 for software
+          updates that go into hidden folders.</li>
+          <li><em>Faster reads.</em> Large files are now read from the device in one piece instead of in small
+          parts. On a fēnix 8 (software 24.20) a 54 MB file took 4.4 s instead of 19.4 s; on devices that were
+          already fast (Edge 1050) the gain is small.</li>
+          <li><em>Server errors.</em> An error of Garmin's servers (HTTP 500 and above) is now shown as a server
+          error, for example "Connect IQ apps: server error (HTTP 526)" instead of "Connect IQ apps: HTTP 526".</li>
+          <li><em>Venu X1</em> added to the list of devices reported working by users.</li>
+        </ul>
+        <p>Thanks to runlx223 for the Venu X1 report (#70).</p>
+      </description>
+    </release>
+    <release version="0.12.3" date="2026-11-21">
+      <description translate="no">
+        <p>A maintenance release for watches that hide some of their folders from the file manager.</p>
+        <ul>
+          <li>On watches that hide some of their folders (fēnix 8, epix, Venu 2), an update whose file
+          is already on the watch in a place the file manager does not show is listed as already
+          on the device, not as one to install.</li>
+          <li>An update installed into a hidden folder is not offered again while the watch stays
+          connected.</li>
+          <li>When one openExpress window or command reads a watch over a direct USB connection,
+          another one no longer takes that for the watch being unplugged.</li>
+          <li>Opening a direct USB connection now waits until the watch is no longer in use and tries
+          again, instead of giving up at once.</li>
+          <li>On these watches, checking for updates may take the watch out of the file manager for
+          about a second.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.12.2" date="2026-11-21">
+      <description translate="no">
+        <p>A maintenance release with fixes.</p>
+        <ul>
+          <li>openExpress run from source has a menu entry of its own, "openExpress (source)",
+          which no longer hides the Flatpak's.</li>
+          <li>Updates on a device seen as a USB drive create a missing folder again.</li>
+          <li>After the device is plugged in again, a file openExpress wrote is no longer read back
+          whole.</li>
+          <li>A map whose files would go to a folder the device hides from the file manager is
+          refused before anything is copied, with the reason on the Maps page, now also when that
+          folder is inside a visible one and not only at the top level.</li>
+          <li>The window no longer hangs when the Keep Diagnostic Files switch cannot save its
+          setting.</li>
+          <li>The log says how long mounting the device again took, apart from the rest.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.12.1" date="2026-11-20">
+      <description translate="no">
+        <p>A fix for Install All on watches: voice prompts, speech and keyboard updates install
+        too.</p>
+        <ul>
+          <li>Install All on watches. Some watches keep part of their files (voice prompts, speech
+          recognition and keyboard models) in folders that the ordinary USB connection does not
+          show. Up to 0.12.0, an update for such a file ended with "Cannot create directory
+          GARMIN/PROMPTS" and stopped Install All. openExpress 0.12.1 writes these files through its
+          own USB connection, as it already does for a car navigator, and checks each one after the
+          copy. Install All now goes on when one file is refused and says at the end what was not
+          installed. Confirmed on one fēnix 8 with the voice prompts (154 MB) and a font. If you saw
+          that error in 0.12.0 or earlier: update openExpress and click Install All again.</li>
+          <li>After an update is copied, the Updates page no longer reads the file back from the
+          device for a minute: the file openExpress wrote is known by its size and time. A file it
+          must read shows how far the read is.</li>
+          <li>A device connected a moment ago, still starting, is waited for instead of being taken
+          for one that openExpress cannot reach.</li>
+          <li>Change notes that only say "NA" are no longer shown.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.12.0" date="2026-11-19">
+      <description translate="no">
+        <p>Your sensors' batteries and solar charging from your Garmin Connect account, and a few
+        improvements to the window and its messages.</p>
+        <ul>
+          <li>Device page: Account Sensors lists the sensors on your Garmin Connect account (a heart
+          rate strap, a Varia, a speed sensor…) with their batteries and when each was last
+          connected, low batteries first; expand the row to see them. For a device that charges from
+          the sun, Solar Charging says how much activity time the sun added today and in the last 7
+          days. Both are only read from the account, kept for up to an hour and asked again after
+          Refresh or a sync. Checked on a real account with a fēnix 8 Solar and five sensors.</li>
+          <li>The same on the command line: openexpress sensors and openexpress solar [--days N].</li>
+          <li>In a narrow window, the label of a button beside a row's text wraps only where it would
+          otherwise take the text's room.</li>
+          <li>When a connected device offers no files because this user has no access to it (for
+          example over SSH), the message says so and what to do; the sentence about KDE's MTP service
+          now shows only on KDE.</li>
+          <li>The Venu 2S is on the list of devices checked by users (read-only).</li>
+          <li>Polish: the primary wearable is named as in Garmin's Polish manuals, and a device
+          "connected over USB" reads naturally.</li>
+          <li>Translations as they stand today: Czech 1961, French 1954 and German 1887 of the 1994
+          texts; texts not translated yet show in English.</li>
+        </ul>
+        <p>Thanks to bruring for testing the Venu 2S (#60) and for two fixes to building from source,
+        and to prajzner for the Czech translation on Hosted Weblate.</p>
+      </description>
+    </release>
     <release version="0.11.1" date="2026-11-18">
       <description translate="no">
         <p>A maintenance release with fixes to the Updates page, USB drives, the device page and the

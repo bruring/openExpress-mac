@@ -313,6 +313,19 @@ def test_a_kind_of_0_b_is_left_out_and_free_always_stays(clock, free):
 
 
 @pytest.mark.needs_display
+def test_the_dates_of_the_crashes_and_updates_in_polish(clock):
+    from openexpress import i18n
+
+    i18n.setup("pl")
+    try:
+        _win, section = page()
+        newest = titled(section, "Awaria")
+    finally:
+        i18n.setup("en")
+    assert newest.get_subtitle().startswith("19.10.2026 o\u00a012:00\u00a0· ")
+
+
+@pytest.mark.needs_display
 def test_the_kinds_with_a_page_lead_to_it(clock):
     win, section = page()
     details = titled(section, "Category Details")
@@ -324,10 +337,13 @@ def test_the_kinds_with_a_page_lead_to_it(clock):
 
 
 @pytest.mark.needs_display
-def test_the_crashes_and_updates_with_relative_dates_and_the_error_inside(clock):
+def test_the_crashes_and_updates_with_their_dates_and_hours_and_the_error_inside(clock):
+    """A history: every row has its date and hour, never "2 days ago", so that the rows can be
+    told apart and compared; the words of time stay above the list."""
     _win, section = page()
     newest = titled(section, "Crash")
-    assert newest.get_subtitle() == "2 days ago\u00a0· software 21.18\u00a0· the same error as the 2 before"
+    assert newest.get_subtitle() == ("2026-10-19 12:00\u00a0· software 21.18\u00a0· the same error as "
+                                     "the 2 before")
     inside = titled(section, "Error Details")
     assert inside.get_subtitle() == ("error 0x003\u00a0· at 0x10000abc\u00a0· screen 2301\u00a0· boot log "
                                      "error 0x1a2b")
@@ -504,16 +520,24 @@ GB_DUMPS = {
 }
 
 
+# Said in every question: only the dumps go. Said when some go without a copy: what is lost.
+LOGS_STAY = "The error logs stay on the device: the crashes are still counted."
+NO_COPY = "A dump removed without a copy cannot be sent to Garmin later."
+
+
 @pytest.mark.needs_display
 @pytest.mark.parametrize(("dumps", "body", "answer"), [
     ("all", ("5 memory dumps (44.9\u00a0MB) will be copied to this computer and then removed "
-             "from the device. The newest dump stays on the device."), "Copy and Remove"),
+             f"from the device. {LOGS_STAY} The newest dump stays on the device."),
+     "Copy and Remove"),
     ("some", ("5 memory dumps (682.8\u00a0MB) will be removed from the device: 2 (75.3\u00a0MB) "
               "after a copy on this computer, 3 (607.5\u00a0MB) without a copy, as the copies "
-              "would not fit in 100\u00a0MB. The newest dump stays on the device."),
+              f"would not fit in 100\u00a0MB. {LOGS_STAY} {NO_COPY} The newest dump stays on the "
+              "device."),
      "Copy and Remove"),
     ("none", ("3 memory dumps (607.5\u00a0MB) will be removed from the device without a copy, "
-              "as the copies would not fit in 100\u00a0MB. The newest dump stays on the device."),
+              f"as the copies would not fit in 100\u00a0MB. {LOGS_STAY} {NO_COPY} The newest dump "
+              "stays on the device."),
      "Remove")])
 def test_the_question_names_what_goes_and_what_is_not_copied(clock, in_the_window, dumps,
                                                               body, answer):
@@ -540,8 +564,9 @@ def test_the_question_in_polish(clock, in_the_window):
     assert q.heading == "Usunąć starsze zrzuty pamięci?"
     assert q.body == ("Z\u00a0urządzenia zostanie usuniętych 5 zrzutów pamięci (682,8\u00a0MB): "
                       "2 (75,3\u00a0MB) po skopiowaniu na ten komputer, 3 (607,5\u00a0MB) bez "
-                      "kopii, bo kopie nie zmieściłyby się w\u00a0100\u00a0MB. Najnowszy zrzut "
-                      "zostaje na urządzeniu.")
+                      "kopii, bo kopie nie zmieściłyby się w\u00a0100\u00a0MB. Dzienniki błędów "
+                      "zostają na urządzeniu: awarie są nadal liczone. Zrzutu usuniętego bez kopii "
+                      "nie da się później wysłać do Garmina. Najnowszy zrzut zostaje na urządzeniu.")
     assert [a.label for a in q.answers] == ["Skopiuj i\u00a0usuń"]
 
 
@@ -868,15 +893,40 @@ def test_the_dumps_of_a_device_not_connected_not_counted_are_not_known(clock):
     assert titled(section, "Memory Dumps").get_subtitle() == "Not known"
 
 
+def _empty(**changes):
+    return facts(has_diagnostics=False, crashes=[], events=[], dumps=[], hidden_logs=False,
+                 copies=(0, 0, None), **changes)
+
+
 @pytest.mark.needs_display
 def test_a_device_without_diagnostic_data_has_the_empty_page(clock):
-    _win, section = page(facts(has_diagnostics=False, crashes=[], events=[], dumps=[],
-                               hidden_logs=False, copies=(0, 0, None)))
+    _win, section = page(_empty(categories={**CATEGORIES, "logs": 0}))
     assert section.stack.get_visible_child_name() == "info"
     # The page's name, as every page whose device has none of what it shows (show_info).
     assert section.info.get_title() == section.title
     assert section.info.get_description() == ("This device keeps no error logs or memory dumps "
                                               "that openExpress can read")
+
+
+@pytest.mark.needs_display
+@pytest.mark.parametrize(("language", "said"), [
+    ("en", ("This device keeps no error logs or memory dumps that openExpress can read. Its "
+            "other diagnostic files (61.0\u00a0MB) are counted under “Logs and Memory Dumps”.")),
+    ("pl", ("To urządzenie nie zapisuje dzienników błędów ani zrzutów pamięci, które openExpress "
+            "potrafi odczytać. Jego pozostałe pliki diagnostyczne (61,0\u00a0MB) są liczone "
+            "w\u00a0kategorii „Dzienniki i\u00a0zrzuty pamięci”."))])
+def test_the_empty_page_says_where_the_other_diagnostic_files_are_counted(clock, language, said):
+    """Its storage card counts files under Logs and Memory Dumps (a Venu's event logs): the
+    sentence above it says they are other diagnostic files, not what it cannot read."""
+    from openexpress import i18n
+
+    i18n.setup(language)
+    try:
+        _win, section = page(_empty())
+        description = section.info.get_description()
+    finally:
+        i18n.setup("en")
+    assert description == said
 
 
 # --- the device page ------------------------------------------------------------------------
@@ -2098,7 +2148,7 @@ def test_a_removal_that_removed_nothing_says_so(clock, in_the_window):
     s = device_session(device=None, storage=None)
     win = window(session=s, toast=toasts.append, sections={})
     status_page._freed(win, s, freeing.Freed(), "Update file removed, 0 B freed", None)
-    assert told or toasts, "nothing told after the removal"
+    assert told == [] and toasts == ["Nothing removed: the files were no longer on the device"]
 
 
 @pytest.mark.needs_display
@@ -2155,9 +2205,6 @@ def test_removing_an_update_file_has_the_updates_page_read_again(clock, in_the_w
 
 
 # --- a task after a write waits for the count, a closed session let go, a refused task -------
-
-
-NOW = datetime(2026, 10, 21, 12, 0)
 
 
 @pytest.mark.needs_display
@@ -2230,13 +2277,13 @@ def test_with_real_threads_the_page_task_waits_for_the_count(monkeypatch, in_the
         while not done.is_set() and time.monotonic() < end:
             ctx.iteration(False)
             time.sleep(0.001)
-        # let the count finish
-        end = time.monotonic() + 1
-        while time.monotonic() < end:
+        # the count of this write ends before the next write
+        end = time.monotonic() + 5
+        while len(finished) == before and time.monotonic() < end:
             ctx.iteration(False)
             time.sleep(0.005)
-    print("asked the device during the count:", sum(overlapped), "of", len(overlapped))
     assert not any(overlapped), overlapped
+    assert len(finished) == len(overlapped)  # each write counted before the next one
 
 
 @pytest.mark.needs_display

@@ -100,11 +100,13 @@ def test_an_ownership_not_known_is_an_error_with_try_again():
     from openexpress.gui.app import MainWindow
 
     win, sec = page_window("apps")
+    win._ownership_title = MainWindow._ownership_title
     win.session = device_session(device=nothing(), logged_in=True,
                                  ownership_error=OwnershipUnknown("made-up network error"))
     MainWindow.load_apps(win)
+    # The words of the banner above the page, not those of the error.
     assert told(sec) == ("error", "dialog-warning-symbolic", "Something Went Wrong",
-                         "made-up network error")
+                         "Could not check whether this device belongs to your Garmin account")
     assert sec.retry.get_parent() is not None and sec.retry.get_visible()
 
 

@@ -79,13 +79,29 @@ It existed already, for the PTP sessions that reach files gvfs does not show:
 
 - The unmount: `Gio.Mount.unmount_with_operation`. gvfs closes its libmtp session; the device
   stays on USB.
+- Before it, the process's own operations on the device through gvfs end (`gio_storage._InUse`):
+  reads, listings, copies and deletions, a write with its check counted as one, at most 10 s.
+  With one still under way (a large file) the session or the refresh is not had (`DeviceBusy`)
+  and nothing is cut short. gvfs itself refuses an unmount while an operation on the device is
+  under way (a read or a write), not while a file is only held open: on a fēnix 8 a file held open
+  and not read did not stop the unmount, a read going on did, at two tries in a row. The wait
+  keeps the session from meeting that refusal for the process's own operations, which may last
+  longer than the tries below.
+- An unmount gvfs refuses as busy (another program reads or writes the device) is asked again,
+  5 times in all, 0.5 s apart; then the device stays mounted (`DeviceBusy`).
+- While a session waits or runs, a new operation of a worker thread waits until the device is
+  mounted again, at most 30 s (an unplug or the window's closing end the wait at once), then goes
+  on whatever it finds. The main thread and the session's own thread never wait.
 - The mount again: `mount_enclosing_volume` on the same `mtp://` address, then a wait until
   `GARMIN/GarminDevice.xml` can be seen (up to 20 s, once a second).
 - Time limits: 30 s for each. An unmount cancelled at its limit is followed by watching how the
   device settles (the same state for 2 s, at most 15 s) and mounting it again if it is
   unmounted, up to 3 tries.
 - `own_remount`: for 15 s after our own unmount and mount, the window and the background service
-  do not take them for a device unplugged and plugged in; only within the process that did them.
+  do not take them for a device unplugged and plugged in: the process that did them knows them,
+  and the other openExpress processes, of either install, know them from the mark of the
+  session (`device.session_mark`: a file held with flock in the runtime folder the Flatpak shares
+  with the host, while the device stays at its place on USB).
 - The address stays the same, so the `GioStorage` goes on working afterwards.
 
 Measured on a fēnix 8 over the PTP sessions in ordinary use: the unmount, the session and the
@@ -201,8 +217,10 @@ there for its MD5, so its count may include a cut-short file.
 2. **A mount that fails.** The sync or the backup stops with the message to unplug the device
    and plug it in again. What the sync uploaded before is kept; a backup stopped this way leaves
    no partial folder, as any stopped backup. In ordinary use no mount has failed (section 3).
-3. **Other processes.** `own_remount` knows only its own process's mounts, a risk known before
-   this design and the same as for the PTP sessions.
+3. **Other processes.** A refresh is marked for the other openExpress processes as a PTP session
+   is (`device.session_mark`). Without a place for the mark (no runtime folder, or one that
+   cannot be written, said once in the log) only the process that did it knows it, the same as
+   for the PTP sessions:
    - The background service, run by another process, takes the refresh for a device plugged in
      and tries a sync 5 s later: `SyncBusy` while the first sync runs, or a second sync
      (harmless, with its notification) when the first has ended.
@@ -218,4 +236,5 @@ there for its MD5, so its count may include a cut-short file.
    (GIO documents it for the main thread; it has worked so far).
 8. **Other tasks of the window** that read the device during a sync or a backup could meet the
    moment it is unmounted. The window runs one task at a time: another task asked meanwhile
-   gets only a toast.
+   gets only a toast. What the window reads in the background (its pages, checks and counts) is
+   no task: it waits for the device to be mounted again (section 3, "Mounting again").

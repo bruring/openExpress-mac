@@ -239,8 +239,7 @@ def test_the_guard_sees_every_way_of_replacing_a_name():
     assert sorted(through_the_fixture(planted)) == ["Adw", "garmin_usb", "save_consumer"]
     found = _by_name(through_the_fixture)
     assert len(found) >= 20
-    assert {"account_client", "datetime", "Adw", "Gtk", "eject", "save_consumer",
-            "clear_cache"} <= set(found)
+    assert {"account_client", "Adw", "Gtk", "eject", "save_consumer", "clear_cache"} <= set(found)
 
 
 # A name shared by modules of the window that a test replaces in one of them alone, on

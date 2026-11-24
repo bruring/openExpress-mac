@@ -36,33 +36,87 @@ struct MapsPage: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if let storage = model.device.storage {
-                Section {
-                    Gauge(value: storage.usedFraction) {
-                        Text("Device storage")
-                    } currentValueLabel: {
-                        Text("\(Format.bytes(model.freeSpace ?? storage.free)) free")
-                    }
-                    .gaugeStyle(.linearCapacity)
-                }
-            }
             let installed = maps.installed.filter { matches($0.name) }
-            if !installed.isEmpty {
-                Section("Installed") {
-                    ForEach(installed) { map in
-                        MapRow(map: map) {
-                            if map.status == .update {
-                                Text(map.versionChange ?? String(localized: "Update available"))
-                                    .foregroundStyle(.orange)
-                                    .monospacedDigit()
-                            } else {
-                                Text(map.statusText ?? String(localized: "Up to date")).foregroundStyle(.secondary)
-                            }
+            if let card = maps.card {
+                // A device with a memory card: each storage its own section, its space first.
+                // A map removed (its files gone) has no storage left: it waits apart for the
+                // device to drop it once unplugged.
+                let removed = installed.filter(\.isBeingRemoved)
+                let kept = installed.filter { !$0.isBeingRemoved }
+                let onDevice = kept.filter { $0.location != .card && $0.location != .both }
+                let onCard = kept.filter { $0.location == .card }
+                let onBoth = kept.filter { $0.location == .both }
+                Section {
+                    if let storage = model.device.storage {
+                        Gauge(value: storage.usedFraction) { EmptyView() }
+                            .gaugeStyle(.linearCapacity)
+                            .tint(StorageLook.device.color)
+                            .labelsHidden()
+                    }
+                    ForEach(onDevice) { installedRow($0, maps) }
+                    if onDevice.isEmpty {
+                        Text("No maps on the device").foregroundStyle(.secondary)
+                    }
+                } header: {
+                    StorageHeader(look: .device, free: model.freeSpace ?? model.device.storage?.free)
+                }
+                Section {
+                    if let used = card.usedFraction {
+                        Gauge(value: used) { EmptyView() }
+                            .gaugeStyle(.linearCapacity)
+                            .tint(StorageLook.card.color)
+                            .labelsHidden()
+                    }
+                    ForEach(onCard) { installedRow($0, maps) }
+                    if onCard.isEmpty {
+                        Text("No maps on the memory card. Install one there, or move one from the device.")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    StorageHeader(look: .card, free: card.free)
+                }
+                if !removed.isEmpty {
+                    Section {
+                        ForEach(removed) { installedRow($0, maps) }
+                    } header: {
+                        StorageHeader(look: .removed, free: nil)
+                    } footer: {
+                        Text("Their files are removed from the device and its memory card; the device drops them from its map list once it is unplugged.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !onBoth.isEmpty {
+                    Section {
+                        ForEach(onBoth) { installedRow($0, maps) }
+                    } header: {
+                        StorageHeader(look: .both, free: nil)
+                    } footer: {
+                        Text("Each of these is on the device and on its memory card. Keep one copy: the one kept is checked against Garmin's files, then the other is removed.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                if maps.maps.contains(where: { $0.location == .cardOut }) {
+                    // The device's card is out (e.g. in the Mac's card reader): its maps wait.
+                    Section {
+                        Label("The memory card is not in the device. The maps on it can't be changed until it is back.",
+                              systemImage: "sdcard")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if let storage = model.device.storage {
+                    Section {
+                        Gauge(value: storage.usedFraction) {
+                            Text("Device storage")
+                        } currentValueLabel: {
+                            Text("\(Format.bytes(model.freeSpace ?? storage.free)) free")
                         }
-                        .contextMenu {
-                            Button("Remove…", role: .destructive) { removing = map }
-                                .disabled(model.isBusy || map.canRemove == false)
-                        }
+                        .gaugeStyle(.linearCapacity)
+                    }
+                }
+                if !installed.isEmpty {
+                    Section("Installed") {
+                        ForEach(installed) { installedRow($0, maps) }
                     }
                 }
             }
@@ -72,10 +126,28 @@ struct MapsPage: View {
                     ForEach(available) { map in
                         let fits = map.size <= (model.freeSpace ?? .max)
                         MapRow(map: map) {
-                            Button(map.size >= InstallPlan.largeMap ? "Install…" : "Install") { model.requestInstall(map: map) }
+                            if let card = maps.card {
+                                let fitsCard = map.size <= (card.free ?? .max)
+                                Menu("Install") {
+                                    Button(map.size >= InstallPlan.largeMap ? "On the Device…" : "On the Device") {
+                                        model.requestInstall(map: map)
+                                    }
+                                    .disabled(!fits)
+                                    Button("On the Memory Card…") { model.requestInstall(map: map, to: .card) }
+                                        .disabled(!fitsCard)
+                                }
+                                .menuStyle(.button)
                                 .buttonStyle(.glass)
-                                .disabled(model.isBusy || !fits || map.canInstall == false)
-                                .help(fits ? (map.statusText ?? "") : String(localized: "Not enough free space on the device."))
+                                .fixedSize()
+                                .disabled(model.isBusy || (!fits && !fitsCard) || map.canInstall == false)
+                                .help(fits || fitsCard ? (map.statusText ?? "")
+                                      : String(localized: "Not enough free space on the device or its memory card."))
+                            } else {
+                                Button(map.size >= InstallPlan.largeMap ? "Install…" : "Install") { model.requestInstall(map: map) }
+                                    .buttonStyle(.glass)
+                                    .disabled(model.isBusy || !fits || map.canInstall == false)
+                                    .help(fits ? (map.statusText ?? "") : String(localized: "Not enough free space on the device."))
+                            }
                         }
                     }
                 }
@@ -96,9 +168,138 @@ struct MapsPage: View {
     }
 }
 
+extension MapsPage {
+    /// An installed map: its status (or, on both storages, which copy to keep), and its
+    /// context menu (move, keep one, remove). Grouped by storage, it does not repeat its place.
+    func installedRow(_ map: DeviceMap, _ maps: MapsList) -> some View {
+        MapRow(map: map, showsPlace: maps.card == nil) {
+            if map.location == .both, maps.card != nil {
+                // An interrupted move, or what another program did: keep one copy.
+                Menu {
+                    keepMenu(map, maps)
+                } label: {
+                    Label("Keep One", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(StorageLook.both.color)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .tint(StorageLook.both.color)
+                .disabled(model.isBusy || map.canMove != true)
+                .help(map.statusText ?? "")
+            } else if map.status == .update {
+                Text(map.versionChange ?? String(localized: "Update available"))
+                    .foregroundStyle(.orange)
+                    .monospacedDigit()
+            } else {
+                Text(map.statusText ?? String(localized: "Up to date")).foregroundStyle(.secondary)
+            }
+        }
+        .contextMenu {
+            if maps.card != nil { moveMenu(map, maps) }
+            Button("Remove…", role: .destructive) { removing = map }
+                .disabled(model.isBusy || map.canRemove == false)
+        }
+    }
+
+    /// Move to the other storage, for a map on one; keep one copy, for a map on both.
+    @ViewBuilder
+    func moveMenu(_ map: DeviceMap, _ maps: MapsList) -> some View {
+        let movable = !model.isBusy && map.canMove == true
+        switch map.location {
+        case .internal:
+            Button("Move to Memory Card…") { model.requestMove(map: map, to: .card) }
+                .disabled(!movable || (map.moveSize ?? 0) > (maps.card?.free ?? .max))
+        case .card:
+            Button("Move to Device…") { model.requestMove(map: map, to: .internal) }
+                .disabled(!movable || (map.moveSize ?? 0) > (model.freeSpace ?? .max))
+        case .both:
+            keepMenu(map, maps)
+        default:
+            EmptyView()
+        }
+        Divider()
+    }
+
+    /// For a map on both storages: which copy stays (it is checked first, the other removed).
+    @ViewBuilder
+    func keepMenu(_ map: DeviceMap, _ maps: MapsList) -> some View {
+        let movable = !model.isBusy && map.canMove == true
+        Button("Keep on Device…") { model.requestMove(map: map, to: .internal) }
+            .disabled(!movable)
+        Button("Keep on Memory Card…") { model.requestMove(map: map, to: .card) }
+            .disabled(!movable)
+    }
+}
+
+/// The storages of a device with a memory card, each with its own look on the Maps page.
+enum StorageLook {
+    case device, card, both, removed
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .device: "On the Device"
+        case .card: "On the Memory Card"
+        case .both: "On Both Storages"
+        case .removed: "Removed: Gone Once Unplugged"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .device: "internaldrive"
+        case .card: "sdcard"
+        case .both: "exclamationmark.triangle.fill"
+        case .removed: "trash"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .device: .blue
+        case .card: .teal
+        case .both: .orange
+        case .removed: .secondary
+        }
+    }
+}
+
+/// A section header of the Maps page: the storage, in its colour, and its free space.
+struct StorageHeader: View {
+    let look: StorageLook
+    let free: Int64?
+
+    var body: some View {
+        HStack {
+            Label(look.title, systemImage: look.symbol)
+                .foregroundStyle(look.color)
+                .font(.headline)
+            Spacer()
+            if let free {
+                Text("\(Format.bytes(free)) free")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+    }
+}
+
 struct MapRow<Trailing: View>: View {
     let map: DeviceMap
+    /// Says under its name where it is (memory card, both); off where the page groups maps by
+    /// storage.
+    var showsPlace = true
     @ViewBuilder let trailing: () -> Trailing
+
+    /// Where the map is, when it is not on the device's own storage alone.
+    private var place: String? {
+        guard showsPlace else { return nil }
+        return switch map.location {
+        case .card: String(localized: "Memory card")
+        case .both: String(localized: "Device and memory card")
+        case .cardOut: String(localized: "Memory card, not in the device")
+        default: nil
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -109,7 +310,8 @@ struct MapRow<Trailing: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(map.name)
-                Text([map.region, map.installed ? map.installedVersion ?? map.version : map.version, Format.bytes(map.size)]
+                Text([map.region, map.installed ? map.installedVersion ?? map.version : map.version, Format.bytes(map.size),
+                      place]
                         .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)

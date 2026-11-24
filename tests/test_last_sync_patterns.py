@@ -48,6 +48,16 @@ EXPECTED = {
             ((f"Dysk testowy: kolejka Garmin Connect i{NB}TrueUp zostają dla urządzenia, "
               "które zastępuje"), False),
             (f"Pliki z{NB}urządzenia: aktywności ×2", False)])},
+    # The primary training device data and TrueUp, lines put into words when shown: their Polish
+    # words are those of today, not those of the moment of the sync.
+    "format-primary-device-data-trueup.json": {
+        "en": ("2 new files, 2 uploaded · 1 received", [
+            ("Files from the device: activities, primary training device data", False),
+            ("TrueUp: daily totals aligned with your other Garmin devices", False)]),
+        "pl": ("2 nowe pliki, 2 wysłane · 1 odebrany", [
+            (f"Pliki z{NB}urządzenia: aktywności, dane podstawowego urządzenia treningowego",
+             False),
+            (f"TrueUp: dzienne sumy uzgodnione z{NB}innymi urządzeniami Garmin", False)])},
     "format-nothing-new-one-course-received.json": {
         "en": ("nothing to upload · 1 received", [
             ("1 file from Garmin Connect: courses", False)]),
@@ -72,8 +82,8 @@ EXPECTED = {
             ("2 files were already in Garmin Connect", False)]),
         "pl": ("8 nowych plików, 6 wysłanych", [
             ((f"Pliki z{NB}urządzenia: aktywności, monitorowanie, lista segmentów, dziennik "
-             f"zmian ustawień, dziennik urządzenia, dane stanu wytrenowania, dane urządzenia "
-             "głównego, plan Garmin Coach"), False),
+             f"zmian ustawień, dziennik urządzenia, dane stanu wytrenowania, dane podstawowego "
+             "urządzenia treningowego, plan Garmin Coach"), False),
             (f"2 pliki były już w{NB}Garmin Connect", False)])},
     # Written by the version from source in Polish, in words (with full stops): shown as it
     # was written, in any language, but "Brak nowych danych do wysłania" says what the row
@@ -175,7 +185,7 @@ EXPECTED = {
             ("Zainstalowane aplikacje Connect IQ: Face It", False),
             ((f"1 aplikacja Connect IQ czeka w{NB}kolejce: nie można jeszcze instalować "
               "aplikacji na tym urządzeniu przez USB"), False),
-            (f"TrueUp: dzienne podsumowania uzgodnione z{NB}innymi urządzeniami Garmin", False),
+            (f"TrueUp: dzienne sumy uzgodnione z{NB}innymi urządzeniami Garmin", False),
             (f"Pominięto 1 element z{NB}Garmin Connect (nieobsługiwany przez urządzenie)",
              False)])},
     # A sync of an Edge 1050 (real-flatpak-edge-1050-0.6.20-trueup-metrics.json): three
@@ -188,7 +198,7 @@ EXPECTED = {
         "pl": ("8 nowych plików, 8 wysłanych · 4 odebrane", [
             ((f"Pliki z{NB}urządzenia: monitorowanie ×3, lista segmentów, dziennik zmian "
               "ustawień, plan Garmin Coach ×3"), False),
-            (f"TrueUp: dzienne podsumowania uzgodnione z{NB}innymi urządzeniami Garmin",
+            (f"TrueUp: dzienne sumy uzgodnione z{NB}innymi urządzeniami Garmin",
              False)])},
     # The same sync as this version writes it: the files of the queue named by their type.
     "format-0.6.21-received-files.json": {
@@ -201,7 +211,7 @@ EXPECTED = {
             ((f"Pliki z{NB}urządzenia: monitorowanie ×3, lista segmentów, dziennik zmian "
               "ustawień, plan Garmin Coach ×3"), False),
             (f"3 pliki z{NB}Garmin Connect: zestawienia ×3", False),
-            (f"TrueUp: dzienne podsumowania uzgodnione z{NB}innymi urządzeniami Garmin",
+            (f"TrueUp: dzienne sumy uzgodnione z{NB}innymi urządzeniami Garmin",
              False)])},
     # A sync of a bike computer that uploaded the backups of its activity profiles (FIT file
     # type 57): the type by its name, not its code (format-activity-profile-backups.json; made
@@ -360,11 +370,11 @@ def _put(record, when):
 
 @pytest.mark.needs_display
 @pytest.mark.parametrize("language", ["en", "pl"], indirect=True)
-def test_from_the_file_to_the_screen(xdg, language):
+def test_from_the_file_to_the_screen(xdg, language, clock):
     """The device page shows the sync before (its words "Brak nowych danych do wysłania"),
     then the Edge's sync is written and shown again by the device page and by the change of
     the file: the row shows that sync alone, once."""
-    now = datetime.now()
+    now = clock.current
     before = _record("real-source-edge-1050-0.6.3.json")
     today = _record("real-flatpak-edge-1050-0.6.13.json")
     assert before["unit_id"] == today["unit_id"]  # the same device

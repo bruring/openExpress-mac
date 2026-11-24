@@ -17,27 +17,27 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import history, last_sync, service  # noqa: E402
+from openexpress.background import watch_id  # noqa: E402
 from openexpress.connect import OwnershipError  # noqa: E402
 from openexpress.device.found import MassStorageNotice, SeveralDevices  # noqa: E402
 from openexpress.device.gio_storage import garmin_usb, own_remount  # noqa: E402 - Linux only
 from openexpress.device.storage import DeviceError, DeviceNotResponding  # noqa: E402
 from openexpress.i18n import _  # noqa: E402
-from openexpress.paths import APP_ID  # noqa: E402
 from openexpress.progress import nothing  # noqa: E402
 
 log = logging.getLogger(__name__)
 OPEN_RETRIES = 3
 OPEN_RETRY_DELAY_S = 5
+SYNC_DELAY_S = 5  # from a Garmin device's mount to its sync
 
 
 class Watcher(Gio.Application):
-    def __init__(self, delay_s: int = 5):
-        # The GUI's ID with ".Watch" (its own launcher: desktop.files): notifications get
-        # the app icon and name.
+    def __init__(self):
+        # The ID of this install's background service (the version from source has a launcher
+        # of its own for it: desktop.files): notifications get its icon and name.
         # Unique: a second start (autostart + GUI switch) just exits.
-        super().__init__(application_id=APP_ID + ".Watch",
+        super().__init__(application_id=watch_id(),
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
-        self.delay_s = delay_s
         self.running = False
         self.pending = False
         self.quit_requested = False
@@ -56,7 +56,7 @@ class Watcher(Gio.Application):
         # The watch may have been connected before the service started.
         for m in self.monitor.get_mounts():
             if garmin_usb(m, self.monitor):
-                GLib.timeout_add_seconds(self.delay_s, self.start_sync)
+                GLib.timeout_add_seconds(SYNC_DELAY_S, self.start_sync)
 
     def do_activate(self):
         pass
@@ -70,7 +70,7 @@ class Watcher(Gio.Application):
         if own_remount(mount):
             return  # mounted again by our own install, not plugged in
         if garmin_usb(mount):
-            GLib.timeout_add_seconds(self.delay_s, self.start_sync)
+            GLib.timeout_add_seconds(SYNC_DELAY_S, self.start_sync)
 
     def request_quit(self) -> None:
         """Quit now, or after the running sync (never interrupt writes to the watch)."""
@@ -206,7 +206,8 @@ class Watcher(Gio.Application):
 
 
 def main() -> int:
-    from openexpress import applog
+    from openexpress import applog, desktop
 
     applog.setup("watch", stderr_level=logging.INFO, stderr_format="%(message)s")
+    desktop.tidy_up()  # the version from source: what it left under the Flatpak's ID
     return Watcher().run([])

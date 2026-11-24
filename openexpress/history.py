@@ -33,7 +33,7 @@ from openexpress.device.storage import (
     Storage,
     named_in_any_case,
 )
-from openexpress.device.xmldevice import GarminDevice
+from openexpress.device.xmldevice import DeviceFile, GarminDevice
 
 log = logging.getLogger(__name__)
 
@@ -173,11 +173,7 @@ def count(device: GarminDevice, storage: Storage) -> dict[str, int]:
     listed is left out, and "system" with it; a kind the device does not declare too."""
     from openexpress import diagnostics
 
-    rules = []
-    for f in device.files:
-        kind = _kind(f.datatype)
-        if kind is not None and f.path.strip("/").casefold() != QUEUE:
-            rules.append((KINDS.index(kind), kind, f))
+    rules = [(KINDS.index(kind), kind, f) for kind, f in _declared_files(device)]
     rules.sort(key=lambda rule: rule[0])
     logs = [diagnostics.DEBUG, *diagnostics.EVENT_LOGS]
     wanted: dict[str, set[str]] = {}  # folder (in any case) -> the kinds found in it
@@ -381,18 +377,22 @@ def _hidden_logs(device: GarminDevice, storage: Storage, found) -> bool | None:
     if found is not None:
         return bool(found.hidden_logs)
     try:
-        return diagnostics.hidden_logs_to_copy(diagnostics.may_have_hidden_logs(storage),
-                                               device.unit_id,
-                                               bool(getattr(storage, "test_drive", False)))
+        return diagnostics.hidden_now(device, storage)
     except DeviceNotResponding:
         raise
     except DeviceError:
         return None
 
 
+def _declared_files(device: GarminDevice) -> list[tuple[str, DeviceFile]]:
+    """The kind of each file the device declares (its data types), with the declaration; not
+    those of its queue."""
+    return [(kind, f) for f in device.files
+            if (kind := _kind(f.datatype)) is not None and f.path.strip("/").casefold() != QUEUE]
+
+
 def _declared(device: GarminDevice) -> set[str]:
-    kinds = {kind for f in device.files
-             if (kind := _kind(f.datatype)) is not None and f.path.strip("/").casefold() != QUEUE}
+    kinds = {kind for kind, _f in _declared_files(device)}
     kinds.add("logs")
     if device.update_files:
         kinds.add("updates")
@@ -411,9 +411,7 @@ def records_locked():
     (freeing.remove_dumps) and Forget Device (forget._delete) take it, one at a time. A lock
     file of its own, outside the device's folder, so that taking it never makes that folder
     again."""
-    folder = paths.data_dir()
-    paths.make_dir(folder)
-    with paths.locked(folder / LOCK):
+    with paths.folder_locked(paths.data_dir(), LOCK):
         yield
 
 
@@ -563,12 +561,11 @@ def _put_right(where: Path, key: str, fix) -> bool:
         data = where.read_bytes()
     except FileNotFoundError:
         return False
-    kept = _parse(data)
-    if not kept.lines or kept.lines[-1]["conn"] != key:
+    lines = [(raw, parsed) for raw, parsed in _raw_lines(data) if parsed is not None]
+    if not lines or lines[-1][1]["conn"] != key:
         return False
-    last = len(kept.lines) - 1
-    raws = [raw for raw, parsed in _raw_lines(data) if parsed is not None]
-    item = json.loads(raws[last])
+    last = len(lines) - 1
+    item = json.loads(lines[last][0])
     fix(item)
     _rewrite(where, data, lambda n, _parsed: item if n == last else ...)
     return True
@@ -644,9 +641,7 @@ def counted_after(line: dict, when: datetime) -> bool:
     """Whether the line was counted again ("counted") after `when`."""
     if "counted" not in line:
         return False
-    counted = datetime.fromisoformat(line["counted"])
-    counted = counted if counted.tzinfo is not None else counted.astimezone()
-    return counted > when.astimezone()
+    return _aware(line["counted"]) > when.astimezone()
 
 
 def after_removal(device: GarminDevice, storage: Storage,
@@ -832,9 +827,14 @@ def _crash_kept(crash: dict) -> dict:
             **({"software": crash["software"]} if crash.get("software") is not None else {})}
 
 
-def _when(line: dict) -> datetime:
-    when = datetime.fromisoformat(line["time"])
+def _aware(text: str) -> datetime:
+    """A time of the log; one without its zone, in the zone of this computer."""
+    when = datetime.fromisoformat(text)
     return when if when.tzinfo is not None else when.astimezone()
+
+
+def _when(line: dict) -> datetime:
+    return _aware(line["time"])
 
 
 def local_time(line: dict) -> datetime:
@@ -847,9 +847,7 @@ def counted_time(line: dict) -> datetime:
     (naive): again after a removal ("counted", note_counted), else at the connection."""
     if "counted" not in line:
         return local_time(line)
-    when = datetime.fromisoformat(line["counted"])
-    return (when if when.tzinfo is not None else when.astimezone()).astimezone().replace(
-        tzinfo=None)
+    return _aware(line["counted"]).astimezone().replace(tzinfo=None)
 
 
 def _entry(crash: dict):

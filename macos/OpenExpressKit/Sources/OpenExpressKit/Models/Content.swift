@@ -61,6 +61,18 @@ public struct UpdatesList: Codable, Sendable, Hashable {
 }
 
 /// A map (`maps.list`). Named so as not to clash with MapKit's `Map`.
+/// Where a map's own files are: the device's own storage, its memory card, or both (an
+/// interrupted move, or what another program did); `cardOut`: on the memory card, which is not
+/// in the device now (taken out) or cannot be read.
+public enum MapLocation: String, Codable, Sendable, Hashable {
+    case `internal`, card, both, unknown
+    case cardOut = "card_out"
+
+    public init(from decoder: any Decoder) throws {
+        self = MapLocation(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unknown
+    }
+}
+
 public struct DeviceMap: Codable, Sendable, Hashable, Identifiable {
     public enum Status: String, Codable, Sendable {
         case upToDate = "up to date"
@@ -85,12 +97,29 @@ public struct DeviceMap: Codable, Sendable, Hashable, Identifiable {
     public var statusText: String?
     public var canInstall: Bool?
     public var canRemove: Bool?
+    /// Where it is on the device; nil when it is not on it (or that is not known).
+    public var location: MapLocation?
+    /// It may move to the device's other storage (or, on both, be kept on one).
+    public var canMove: Bool?
+    /// About the bytes a move copies (its own map files).
+    public var moveSize: Int64?
+    /// Of its files, the bytes in the engine's download cache (not downloaded again), and of
+    /// `moveSize` (neither read off the device nor downloaded by a move).
+    public var cachedSize: Int64?
+    public var moveCached: Int64?
+    /// Written to or removed from the device, which takes it in once unplugged: "install",
+    /// "remove", or nil.
+    public var waiting: String?
+
+    /// Its files are removed; the device drops it from its list once unplugged.
+    public var isBeingRemoved: Bool { waiting == "remove" }
 
     public var id: String { name }
 
     public init(name: String, version: String?, size: Int64, installed: Bool, status: Status,
                 region: String? = nil, installedVersion: String? = nil, statusText: String? = nil,
-                canInstall: Bool? = nil, canRemove: Bool? = nil) {
+                canInstall: Bool? = nil, canRemove: Bool? = nil, location: MapLocation? = nil,
+                canMove: Bool? = nil, moveSize: Int64? = nil) {
         self.name = name
         self.version = version
         self.size = size
@@ -101,6 +130,9 @@ public struct DeviceMap: Codable, Sendable, Hashable, Identifiable {
         self.statusText = statusText
         self.canInstall = canInstall
         self.canRemove = canRemove
+        self.location = location
+        self.canMove = canMove
+        self.moveSize = moveSize
     }
 
     /// "2025.10 → 2025.20" for an update, "new · 2025.20" for a map not installed.
@@ -123,6 +155,80 @@ public struct DeviceMap: Codable, Sendable, Hashable, Identifiable {
         statusText = try? c.decodeIfPresent(String.self, forKey: .statusText)
         canInstall = try? c.decodeIfPresent(Bool.self, forKey: .canInstall)
         canRemove = try? c.decodeIfPresent(Bool.self, forKey: .canRemove)
+        location = try? c.decodeIfPresent(MapLocation.self, forKey: .location)
+        canMove = try? c.decodeIfPresent(Bool.self, forKey: .canMove)
+        moveSize = try? c.decodeIfPresent(Int64.self, forKey: .moveSize)
+        cachedSize = try? c.decodeIfPresent(Int64.self, forKey: .cachedSize)
+        moveCached = try? c.decodeIfPresent(Int64.self, forKey: .moveCached)
+        waiting = try? c.decodeIfPresent(String.self, forKey: .waiting)
+    }
+}
+
+/// A mounted volume with a Garmin folder: a memory card in this Mac's card reader
+/// (`maps.card_reader`), and whether it is the device's card.
+public struct ReaderVolume: Codable, Sendable, Hashable, Identifiable {
+    public var path: String
+    public var name: String
+    public var isCard: Bool
+    /// Why it is not the device's card.
+    public var reason: String?
+
+    public var id: String { path }
+
+    public init(path: String, name: String, isCard: Bool, reason: String? = nil) {
+        self.path = path
+        self.name = name
+        self.isCard = isCard
+        self.reason = reason
+    }
+}
+
+public struct CardReaderList: Codable, Sendable, Hashable {
+    public var volumes: [ReaderVolume]
+    /// openExpress has seen the device's card over USB (else no volume can be told as it).
+    public var remembered: Bool
+
+    public init(volumes: [ReaderVolume] = [], remembered: Bool = false) {
+        self.volumes = volumes
+        self.remembered = remembered
+    }
+
+    /// The device's card among them.
+    public var card: ReaderVolume? { volumes.first(where: \.isCard) }
+}
+
+/// A storage maps may be on (`maps.list` `storages`): the device's own, or its memory card.
+public struct MapStorage: Codable, Sendable, Hashable, Identifiable {
+    /// `.internal` or `.card`.
+    public var id: MapLocation
+    /// As the device names it, e.g. "Memory Card".
+    public var name: String?
+    public var free: Int64?
+    public var capacity: Int64?
+    public var removable: Bool
+
+    public init(id: MapLocation, name: String? = nil, free: Int64? = nil, capacity: Int64? = nil,
+                removable: Bool = false) {
+        self.id = id
+        self.name = name
+        self.free = free
+        self.capacity = capacity
+        self.removable = removable
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(MapLocation.self, forKey: .id)
+        name = try? c.decodeIfPresent(String.self, forKey: .name)
+        free = try? c.decodeIfPresent(Int64.self, forKey: .free)
+        capacity = try? c.decodeIfPresent(Int64.self, forKey: .capacity)
+        removable = (try? c.decodeIfPresent(Bool.self, forKey: .removable)) ?? false
+    }
+
+    /// The share in use, 0…1; nil when the capacity is not known.
+    public var usedFraction: Double? {
+        guard let capacity, capacity > 0, let free else { return nil }
+        return min(1, max(0, Double(capacity - free) / Double(capacity)))
     }
 }
 
@@ -160,13 +266,22 @@ public struct MapsList: Codable, Sendable, Hashable {
     public var free: Int64?
     /// Set when Garmin has no maps service for the device (`maps` is then empty).
     public var message: String?
+    /// The device's own storage, then its memory card when it has one.
+    public var storages: [MapStorage]
+    /// The bytes a second maps last downloaded at; nil before the first.
+    public var downloadSpeed: Double?
 
-    public init(maps: [DeviceMap], ownMaps: [OwnMap] = [], free: Int64? = nil, message: String? = nil) {
+    public init(maps: [DeviceMap], ownMaps: [OwnMap] = [], free: Int64? = nil, message: String? = nil,
+                storages: [MapStorage] = []) {
         self.maps = maps
         self.ownMaps = ownMaps
         self.free = free
         self.message = message
+        self.storages = storages
     }
+
+    /// The memory card, when the device has one.
+    public var card: MapStorage? { storages.first { $0.id == .card } }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -174,11 +289,17 @@ public struct MapsList: Codable, Sendable, Hashable {
         ownMaps = (try? c.decodeIfPresent([OwnMap].self, forKey: .ownMaps)) ?? []
         free = try? c.decodeIfPresent(Int64.self, forKey: .free)
         message = try? c.decodeIfPresent(String.self, forKey: .message)
+        storages = (try? c.decodeIfPresent([MapStorage].self, forKey: .storages)) ?? []
+        downloadSpeed = try? c.decodeIfPresent(Double.self, forKey: .downloadSpeed)
     }
 
     public var installed: [DeviceMap] { maps.filter(\.installed) }
     public var available: [DeviceMap] { maps.filter { !$0.installed } }
-    public var updatable: [DeviceMap] { maps.filter { $0.installed && $0.status == .update } }
+    /// Installed maps with an update the engine can install: not one it keeps its hands off
+    /// (on the memory card, in a folder the device hides), whose `canInstall` is false.
+    public var updatable: [DeviceMap] {
+        maps.filter { $0.installed && $0.status == .update && $0.canInstall != false }
+    }
 }
 
 /// The type of a Connect IQ app, as the engine's stable `kind` word.

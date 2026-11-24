@@ -28,6 +28,8 @@ from openexpress.device.storage import LocalStorage
 NB = "\u00a0"
 DAY = 86400.0
 READY = "Update ready: unplug the device to install it"
+# The Updates page: a short heading ("Update Ready") and what to do under it.
+TODO = "Unplug the device to install it"
 
 
 def _bundle():
@@ -317,7 +319,8 @@ def test_the_date_of_a_failed_check_is_told_against_now_once_a_minute(device_roo
 @pytest.mark.needs_display
 def test_the_top_of_the_updates_page_says_ready_and_how_many_more():
     _win, status, groups, _buttons = _updates_page(_staged_items(font_on_device=False))
-    assert status["texts"][0] == (f"{READY}{NB}· 1 more available", ["title-1"])
+    assert status["texts"][:2] == [("Update Ready", ["title-1"]),
+                                   (f"{TODO}{NB}· 1 more available", [])]
     (available,) = groups
     assert [r.get_title() for r in available.rows] == ["Test Font"]
 
@@ -329,7 +332,8 @@ def test_a_second_system_update_is_listed_while_one_is_ready():
     other = updates.parse_updates(lower_keys({"updates": [_entry(
         "006-V0001-00", "Other Bundle", "Firmware", "Garmin", "GUPDATE.GCD", b"other")]}))
     _win, status, groups, _buttons = _updates_page(items + other)
-    assert status["texts"][0][0] == f"{READY}{NB}· 1 more available"
+    assert [text for text, _styles in status["texts"][:2]] == [
+        "Update Ready", f"{TODO}{NB}· 1 more available"]
     (available, *_rest) = groups
     assert [r.get_title() for r in available.rows] == ["Device Software"]
     assert "Install" not in [label for label, _s in status["buttons"]]

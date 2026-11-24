@@ -26,9 +26,6 @@ from openexpress.i18n import _, caption, npgettext  # noqa: E402
 
 log = logging.getLogger(__name__)
 
-# The days of the row Solar Charging: today and the six before it.
-SOLAR_DAYS = 7
-
 
 def account_entry(s) -> dict | None:
     """The entry of the open device in the account's list the ownership check read; None when
@@ -149,7 +146,7 @@ def solar_row(win, s) -> Adw.ActionRow | None:
         row.set_subtitle(_("Could not check"))
         return row
     row.set_subtitle(_("Checking…"))
-    start, end = readings.period(SOLAR_DAYS, readings.now().date())
+    start, end = readings.period(readings.SOLAR_DAYS, readings.now().date())
 
     def read_solar():
         return readings.solar_days(s.client.solar_gain(device_id, start, end), start, end)

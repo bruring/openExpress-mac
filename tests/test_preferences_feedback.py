@@ -54,6 +54,7 @@ BACKGROUND_ROW = {"en": "Background Sync", "pl": "Synchronizacja w\u00a0tle"}
 BACKGROUND = {True: {"en": "Background sync enabled", "pl": "Włączono synchronizację w\u00a0tle"},
               False: {"en": "Background sync disabled",
                       "pl": "Wyłączono synchronizację w\u00a0tle"}}
+LANGUAGE_ROW = {"en": "Interface Language", "pl": "Język interfejsu"}
 
 
 def iterate(seconds: float = 0.05) -> None:
@@ -414,3 +415,24 @@ def test_with_the_preferences_closed_the_window_tells_it(real_window, what):
     else:
         r.win.set_background(True)
         assert r.told == [("window", BACKGROUND[True][lang])]
+
+
+def test_a_language_not_saved_says_why_in_the_systems_words(real_window, monkeypatch):
+    """The settings file cannot be written: the system's words, without the number of the error
+    or the path of the file."""
+    from gi.repository import Adw
+
+    from openexpress.gui import preferences
+
+    def refused(code):
+        raise PermissionError(13, "Permission denied", "/made-up/openexpress/settings.json")
+
+    r = real_window
+    monkeypatch.setattr(preferences, "save_ui_language", refused)
+    said = []
+    r.win.error = lambda title, text: said.append(text)
+    preferences_open(r)
+    (combo,) = [w for w in descendants(r.win._preferences)
+                if isinstance(w, Adw.ComboRow) and w.get_title() == LANGUAGE_ROW[r.language]]
+    combo.set_selected(1 if combo.get_selected() != 1 else 2)
+    assert said == ["Permission denied"]

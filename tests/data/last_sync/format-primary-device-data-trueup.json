@@ -1,0 +1,31 @@
+{
+ "synthetic": "made up: a sync that uploaded an activity and the primary training device data, and wrote TrueUp: the two lines of the details named in the words of today",
+ "time": 1793000000.0,
+ "unit_id": 3000000130,
+ "uploaded": 2,
+ "downloaded": 1,
+ "skipped_known": 0,
+ "rejected": 0,
+ "errors": [],
+ "lines": [
+  {
+   "kind": "new_files",
+   "types": {
+    "FIT_TYPE_4": 1,
+    "FIT_TYPE_74": 1
+   }
+  },
+  {
+   "kind": "uploads",
+   "uploaded": 2,
+   "known": 0,
+   "known_checked": 0,
+   "known_server": 0,
+   "rejected": 0,
+   "errors": 0
+  },
+  {
+   "kind": "trueup"
+  }
+ ]
+}

@@ -51,6 +51,11 @@ class ApiError(UserFacingError):
         self.body = body
 
 
+class NetworkError(ApiError):
+    """A request that got no answer: the network, not the server. Its cause is the requests
+    error."""
+
+
 class Unauthorized(ApiError):
     pass
 
@@ -174,7 +179,6 @@ class GarminClient:
         self,
         method: str,
         url: str,
-        form: list[tuple[str, str]] | None = None,
         with_token: bool = True,
     ) -> str:
         if self.consumer is None:
@@ -190,7 +194,7 @@ class GarminClient:
                 raise Unauthorized(_("Not signed in. Run: openexpress login"))
             token, secret = self.auth.token, self.auth.token_secret
         return authorization_header(
-            method, url, self.consumer.key, self.consumer.secret, token, secret, form
+            method, url, self.consumer.key, self.consumer.secret, token, secret
         )
 
     def require_verified(self, unit_id: int | None = None) -> None:
@@ -210,7 +214,7 @@ class GarminClient:
 
     def _request(self, method: str, url: str, what: str, quiet: bool = False,
                  service: str | None = None, **kw) -> requests.Response:
-        """Send a request; network failures become ApiError, whose text names no address.
+        """Send a request; network failures become NetworkError, whose text names no address.
         `quiet` keeps the address out of the log, for a path that names the device.
         `service`: the service of the network state it is noted under (netstatus), for a
         host that is not of the environment (the Connect IQ store); else by its host."""
@@ -224,14 +228,16 @@ class GarminClient:
         except requests.RequestException as e:
             log.warning("HTTP %s %s failed after %.1f s: %s", method, where,
                         time.monotonic() - started, type(e).__name__)
+            # The words of requests to the log file only (the terminal of the command line shows
+            # warnings): its text names the whole address, query and all (the sign-in ticket of
+            # the ticket exchange, a unit ID), left out, the rest filtered like the log. The
+            # window and the command line say it in the words of network_error_text.
+            log.info("HTTP %s %s: %s", method, where, applog.network_error_detail(e))
             if service is None:
                 netstatus.record_failure(_hosts(self), url)
             else:
                 netstatus.record(service, url, None)
-            # Its text names the whole address, query and all (the sign-in ticket of the ticket
-            # exchange, a unit ID): left out, and the rest filtered like the log, before the
-            # window or the command line shows it.
-            raise ApiError(_("{what}: network error ({error})").format(
+            raise NetworkError(_("{what}: network error ({error})").format(
                 what=what, error=applog.network_error_text(e))) from e
         log.info("HTTP %s %s -> %s in %.1f s", method, where, resp.status_code,
                  time.monotonic() - started)
@@ -293,7 +299,11 @@ class GarminClient:
                 resp.text[:500],
             )
         if not resp.ok:
-            raise ApiError(f"{what}: HTTP {resp.status_code}", resp.status_code, resp.text[:500])
+            # An error of the server itself (5xx: down, overloaded, a proxy that cannot reach it)
+            # said as one, in the words of the state of Garmin's servers; any other by its code.
+            said = (applog.server_error_text(resp.status_code)
+                    if applog.is_server_error(resp.status_code) else f"HTTP {resp.status_code}")
+            raise ApiError(f"{what}: {said}", resp.status_code, resp.text[:500])
         return resp
 
     def connect_url(self, path: str) -> str:
@@ -305,7 +315,6 @@ class GarminClient:
         path: str,
         what: str,
         params: dict | list | None = None,
-        form: list[tuple[str, str]] | None = None,
         headers: dict | None = None,
         **kw,
     ) -> requests.Response:
@@ -315,10 +324,8 @@ class GarminClient:
         url = self._prepared_url(method, url)
         h = self._client_headers()
         h.update(headers or {})
-        h["Authorization"] = self._sign(method, url, form)
-        data = urlencode(form) if form is not None else kw.pop("data", None)
-        if form is not None:
-            h["Content-Type"] = "application/x-www-form-urlencoded"
+        h["Authorization"] = self._sign(method, url)
+        data = kw.pop("data", None)
         resp = self._request(method, url, what, headers=h, data=data, **kw)
         return self._check(resp, what)
 
@@ -459,8 +466,10 @@ class GarminClient:
             try:
                 resp = self.http.get(url, headers=h, timeout=TIMEOUT)
             except requests.RequestException as e:
-                # Its text names the address, query and all: left out, as in _request.
-                log.warning("Upload status check failed (%s)", applog.network_error_text(e))
+                # Its text names the address, query and all: left out, as in _request. The sync
+                # says the upload was not confirmed: on the terminal of the command line not again.
+                log.warning("Upload status check failed (%s)", applog.network_error_detail(e),
+                            extra=applog.TOLD)
                 netstatus.record_failure(_hosts(self), url)
                 return 0
             netstatus.record_response(_hosts(self), url, resp)

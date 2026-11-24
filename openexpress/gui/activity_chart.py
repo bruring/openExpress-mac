@@ -25,7 +25,7 @@ gi.require_version("PangoCairo", "1.0")
 
 from gi.repository import Gdk, GObject, Gtk, Pango, PangoCairo  # noqa: E402 - imports must follow gi.require_version
 
-from openexpress.gui.activity_colours import accent_colour  # noqa: E402
+from openexpress.gui.activity_colours import accent_colour, plain_flow  # noqa: E402
 from openexpress.gui.activity_zones import ZONE_COLOURS  # noqa: E402
 from openexpress.gui.palette import rgba  # noqa: E402
 from openexpress.gui.words import (  # noqa: E402
@@ -662,9 +662,7 @@ class ActivityChart(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.series = {s.kind: s for s in series}
         # The value beside the switch, under it in a narrow window.
-        top = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, min_children_per_line=1,
-                          max_children_per_line=2, column_spacing=12, row_spacing=4)
-        top.add_css_class("oe-plain")  # no background under the pointer: only the buttons
+        top = plain_flow(column_spacing=12, row_spacing=4)
         if len(series) > 1:
             switch = Gtk.Box(valign=Gtk.Align.CENTER)
             switch.add_css_class("linked")

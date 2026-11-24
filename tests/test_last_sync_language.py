@@ -28,7 +28,7 @@ SECOND = {  # the details of the second sync, in each language
     "pl": ["Zainstalowane aplikacje Connect IQ: Face It",
            (f"1 aplikacja Connect IQ czeka w{NB}kolejce: nie można jeszcze instalować "
             "aplikacji na tym urządzeniu przez USB"),
-           f"TrueUp: dzienne podsumowania uzgodnione z{NB}innymi urządzeniami Garmin",
+           f"TrueUp: dzienne sumy uzgodnione z{NB}innymi urządzeniami Garmin",
            f"Pominięto 1 element z{NB}Garmin Connect (nieobsługiwany przez urządzenie)"],
 }
 

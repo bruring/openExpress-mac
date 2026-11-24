@@ -308,3 +308,56 @@ def test_a_half_file_where_there_was_none_goes(device_root, tmp_path, monkeypatc
     with pytest.raises(DeviceError):
         updates.install([font], gio(device_root))
     assert not target.exists()
+
+
+# A folder or a file the device refuses: said so, with what helps
+
+REFUSED = "The device refused it; a device report helps find out why."
+
+
+def _refusing(monkeypatch, code, words):
+    """Gio in this process answers every copy and new folder with the GLib error `code`."""
+    from gi.repository import Gio, GLib
+
+    class Refusing:
+        def copy(self, *a):
+            raise GLib.Error.new_literal(Gio.io_error_quark(), words, int(code))
+
+        def make_directory(self, *a):
+            raise GLib.Error.new_literal(Gio.io_error_quark(), words, int(code))
+
+    monkeypatch.setattr(gio_storage, "in_flatpak", lambda: False)
+    monkeypatch.setattr(gio_storage.Gio.File, "new_for_path",
+                        staticmethod(lambda p: Refusing()))
+    return Refusing()
+
+
+@pytest.mark.parametrize("operation", ["make a folder", "write a file"])
+def test_what_the_device_refuses_is_said_as_its_refusal(device_root, tmp_path, monkeypatch,
+                                                        operation):
+    """gvfs passes on a refusal of the device in libmtp's words (e.g. "Could not send object
+    info") as a plain failure: the message adds that the device refused it, and what helps."""
+    from gi.repository import Gio
+
+    st = gio(device_root)
+    refusing = _refusing(monkeypatch, Gio.IOErrorEnum.FAILED, "Could not send object info")
+    monkeypatch.setattr(st, "_f", lambda real_path: refusing)
+    local = tmp_path / "x.fit"
+    local.write_bytes(b"NEW")
+    with pytest.raises(DeviceError) as error:
+        if operation == "make a folder":
+            st._mkdir("GARMIN/PROMPTS")
+        else:
+            st._copy_local(local, "GARMIN/NewFiles/x.fit", None, "Cannot write x.fit")
+    assert str(error.value).endswith(": Could not send object info. " + REFUSED)
+
+
+def test_a_full_device_is_no_refusal(device_root, tmp_path, monkeypatch):
+    from gi.repository import Gio
+
+    st = gio(device_root)
+    refusing = _refusing(monkeypatch, Gio.IOErrorEnum.NO_SPACE, "No space left on device")
+    monkeypatch.setattr(st, "_f", lambda real_path: refusing)
+    with pytest.raises(DeviceError) as error:
+        st._mkdir("GARMIN/PROMPTS")
+    assert str(error.value).endswith(": No space left on device")

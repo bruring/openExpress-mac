@@ -254,7 +254,7 @@ def test_detecting_the_device_counts_nothing_in_its_thread(device_root, monkeypa
     monkeypatch.setattr(sync, "activities_to_sync", counted)
     win = stand_in(
         busy=False, session=None, run_task=RunNow(), show_device=lambda: None,
-        connected=types.SimpleNamespace(found_alone=lambda: None, stop_choosing=lambda: None),
+        connected=types.SimpleNamespace(clear=lambda: None, stop_choosing=lambda: None),
         sections={"watch": types.SimpleNamespace(show=lambda what: None)})
     app.MainWindow.refresh_device(win)
     assert win.session is session and session.to_sync is None and counted.calls == []

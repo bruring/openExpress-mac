@@ -8,16 +8,16 @@ the two are separate installations, see
 | Command | Description |
 |---|---|
 | `openexpress info [--json]` | model, part number, software version, Unit ID, storage and free space, data types and components, Connect IQ limits; `--json` as JSON |
-| `openexpress files [--type FIT_TYPE_4] [--limit N]` | files on the device by data type from `GarminDevice.xml`; with `--type` (or `-v`) each file, `--limit N` only the last N |
+| `openexpress files [--type FIT_TYPE_4] [--limit N]` | files on the device by data type from `GarminDevice.xml`; with `--type` (or `openexpress -v files`) each file, `--limit N` only the last N |
 | `openexpress activities [--limit N \| --all] [--backups DIR]` | the activities of the connected device and of its backups, the newest first ([details](#activities)) |
 | `openexpress activities export NAME… [--dest DIR] [--backups DIR] [--apply]` | write activities as GPX 1.1 files, by default to `Garmin/GPX` in your Documents folder ([details](#activities-export)) |
 | `openexpress fit inspect FILE` | what a FIT file on this computer holds and whether it is whole ([details](#fit-inspect)) |
 | `openexpress report [--log]` | device report for GitHub, without serial numbers, Unit IDs or e-mail, with the device's last crashes (date, software version, error number) and its memory dumps; when no device can be opened, a report of what is connected over USB and of the system (exit code 0); `--log` prints the last 200 lines of the [log](troubleshooting.md#log-file) instead, filtered, for the form's “Log” field |
 | `openexpress diagnostics [--crash-logs] [--dumps] [--free-space] [--apply]` | what the device logged as errors, the crashes that restarted it, its memory dumps and its log of connections; copies its diagnostic files, or frees up space on it ([details](#diagnostics)) |
-| `openexpress status [--online]` | the sign-in, the Garmin devices connected (name, USB mode, whether they are on the account), the last sync of each with the activities it has to upload now, what the window's last check of its updates found, and for a watch with satellite data (experimental) whether they are on and when they were last written; `--online` also asks Garmin Connect and Garmin's update server now (nothing of the answers is kept); without it nothing is asked of a server |
+| `openexpress status [--online]` | the sign-in, the Garmin devices connected (name, USB mode, whether they are on the account), the last sync of each with the activities it has to upload now, what the window's last check of its updates found, and for a device with satellite data (experimental) whether they are on and when they were last written; `--online` also asks Garmin Connect and Garmin's update server, or uses their answers from a moment ago ([How long Garmin's answers are kept](privacy.md#how-long-garmins-answers-are-kept)); without it nothing is asked of a server |
 | `openexpress devices [--forget N] [--discard-pending] [--backups] [--apply]` | the devices this installation has seen; `--forget N` forgets device number N of the list and what this installation keeps of it, as **Forget Device** does ([what that is](guide.md#the-start-page-and-the-device-page)); files not uploaded yet go only with `--discard-pending`, its backups only with `--backups`; a connected device is not forgotten |
 | `openexpress setup --from-installer GarminExpress.exe` | one-time setup from the Garmin Express installer for Windows (only read, nothing installed); instead of it `--from-dll Networking.dll [--utilities-dll Utilities.dll]` or `--key KEY --secret SECRET` |
-| `openexpress setup [--ui-language en\|cs\|de\|fr\|pl\|system] [--diagnostics-copy on\|off] [--locale LOCALE] [--environment production\|china] [--copy-fit-to DIR\|off] [--copy-fit-types TYPE\|off] [--strava-upload on\|off]` | settings: the program's language, the copy of the device's diagnostic files, the language asked of Garmin's servers (by default the program's), Garmin's servers, macOS fork: the [FIT drop folder](guide.md#fit-drop-folder) and which data types it copies, and whether a sync also uploads new activities to [Strava](guide.md#strava); without options it shows them |
+| `openexpress setup [--ui-language en\|cs\|de\|fr\|pl\|system] [--diagnostics-copy on\|off] [--locale LOCALE] [--environment production\|china] [--copy-fit-to DIR\|off] [--copy-fit-types TYPE\|off] [--strava-upload on\|off]` | settings: the program's language, the copy of the device's diagnostic files, the language to request from Garmin's servers (by default the program's), Garmin's servers, macOS fork: the [FIT drop folder](guide.md#fit-drop-folder) and which data types it copies, and whether a sync also uploads new activities to [Strava](guide.md#strava); without options it shows them |
 | `openexpress login [--manual]` | sign in on the Garmin SSO page (WebKitGTK window) |
 | `openexpress whoami [--check]`, `logout` | account (its name masked: a user name as `t…b`, an e-mail address as `t…@e…`, as in every command's output), sign out (removes the local token) |
 | `openexpress strava connect [--client-id ID --client-secret SECRET]`, `strava disconnect`, `strava status` | macOS fork: connect to, disconnect from, or the connection to [Strava](guide.md#strava), with your own Strava API application (`connect` opens a browser; later runs reuse the client ID/secret it saved) |
@@ -27,11 +27,16 @@ the two are separate installations, see
 | `openexpress baseline [--apply]` | marks current files as already uploaded (first run) |
 | `openexpress backup [--dest DIR] [--keep N] [--apply]` | local backup of the device's data (default `Garmin/Backups` in your Documents folder, or `--dest`; the newest 3 kept, or `--keep N`); a file unchanged since the previous backup is linked to it, not copied again; a FIT file the device was still writing when it was connected is left out, and the summary says so |
 | `openexpress cache [--clear] [--only maps,updates] [--apply]` | size of the cache by part (maps, updates, pictures, answers, tiles, temp) and clearing it (see [Cache](guide.md#cache)) |
-| `openexpress updates [--reinstalls]` | the device's software updates (no login needed); `--reinstalls` also lists what can be installed again (a component offered at a lower version than the device lists is installed again only when its file is the one offered, and says so); a file the device already has with the same size and MD5 is not counted as an update, only listed as "already on the device"; on a car navigator that hides its `.System` folder, that folder is read once through openExpress's own USB session (names and sizes); every command that opens such a device reads it once too, as does `status --online`, so that they count and compare what the window does |
-| `openexpress updates --install PART…\|all [--apply]` | download with MD5 check and copy to the device; after it is unplugged the device may ask whether to install the update now or later, then restart; on a car navigator that hides its `.System`, the updates that go there (and with `--reinstalls` the components installed again) are written as Garmin Express writes them, once openExpress has read that folder (the old file of that name deleted first, the new one checked by its size and read back whole against its MD5); the device's other updates first, its own software last, and the first failure stops the rest, saying what is on the device |
+| `openexpress updates [--reinstalls]` | the device's software updates (no login needed); `--reinstalls` also lists what can be installed again; a file the device already has with the same size and MD5 is listed as "already on the device" ([details](#updates)) |
+| `openexpress updates --install PART…\|all [--apply]` | download with MD5 check and copy to the device, which installs the update once unplugged ([details](#updates)) |
+| `openexpress updates --install PART… --hidden-folder-trial [--apply]` | as `--install`, for updates whose folder a watch hides inside `GARMIN`, but the file it replaces is kept in `hidden-folder-trial/` in openExpress's data folder (its SHA-256 printed) and the first refusal ends it; part numbers only, not `all`; the window does not offer it |
 | `openexpress maps [--all]` | installed maps and maps of your own; `--all` also those available for download (TopoActive, base maps, CourseView, Ski) |
 | `openexpress maps install NAME [--apply]` | install a map assigned to the device (download, activation, write) |
-| `openexpress maps install NAME --hidden-folder-trial [--apply]` | a trial: install a map whose files go to a folder the device hides (a car navigator's `.System`), through openExpress's own USB session; see [Maps on a car navigator](guide.md#maps-on-a-car-navigator-a-trial) |
+| `openexpress maps install NAME --to card [--apply]` | macOS fork: install it on the device's memory card instead (a handheld such as the GPSMAP H1i Plus), each file where Garmin Express puts it: the map's files on the card, its unlock and search files on the device; a terrain layer other maps share stays where it is. A map on the card is updated and removed there, and `maps` marks it *(memory card)* |
+| `openexpress maps move NAME --to internal\|card [--apply]` | Move a map between the device's own storage and its memory card: its map files are copied, each checked against Garmin's checksum, and removed from where they were only once all are there; its unlock and search files, and a terrain layer other maps share, stay where they are. A map on both storages is kept on the one named |
+| `openexpress maps move NAME --to card --download [--apply]` | As `maps move`, its files downloaded again from Garmin rather than read off the device (faster when the device reads slowly) |
+| `openexpress maps install\|move NAME --to card --card-reader VOLUME [--apply]` | The device's memory card in this computer's card reader (mounted at `VOLUME`) takes the map's card files, much faster than through the device; its unlock and search files still go to the device over USB. A volume is used only when it is this device's card, as openExpress last saw it over MTP; it is ejected afterwards |
+| `openexpress maps install NAME --hidden-folder-trial [--apply]` | a trial: install a map whose files go to a folder the device hides from the file manager (a car navigator's `.System`), over a direct USB connection; see [Maps on a car navigator](guide.md#maps-on-a-car-navigator-a-trial) |
 | `openexpress maps update [--apply]`, `maps remove NAME [--apply]` | update and remove maps |
 | `openexpress maps add FILE.img [--name NAME] [--apply]` | copy a map of your own (e.g. made from OpenStreetMap data) to the device; never overwrites a file |
 | `openexpress maps remove --own NAME [--apply]` | remove a map of your own that was copied with `maps add` |
@@ -43,7 +48,7 @@ the two are separate installations, see
 | `openexpress apps order [--from COPY] [--all] [--apply]` | put apps and widgets back in the order of a saved copy of the app list; without `--from` it lists the copies with how many apps each would move, `--all` lists every position that would change |
 | `openexpress primary [--wearable]`, `primary set [--wearable] [--apply]` | the account's primary training device, with `--wearable` its primary wearable (steps and sleep); `set` makes the connected device the primary training device (the main source of performance and training data in Garmin Connect, as `set` says first), `set --wearable` the primary wearable |
 | `openexpress sensors` | the sensors on your Garmin account (a heart rate strap, a Varia, a power meter…) with their batteries and when each was last connected, low batteries first; no device needed, the account does not say which device a sensor is paired with ([details](#sensors-and-solar)) |
-| `openexpress solar [--days N]` | for each device of your Garmin account that charges from the sun: the activity time the sun gained it today, in the last N days (7 by default, at most 31) and day by day ([details](#sensors-and-solar)) |
+| `openexpress solar [--days N]` | for each device of your Garmin account that charges from the sun: the activity time the sun added today, in the last N days (7 by default, at most 31) and day by day ([details](#sensors-and-solar)) |
 | `openexpress courses` | experimental: the courses on the connected device, the GPX files waiting to become courses and the saved locations ([details](#courses)) |
 | `openexpress courses add FILE.gpx [--name COURSE] [--apply]` | experimental: copy a GPX file to `Garmin/NewFiles`, where the device turns it into courses when it is unplugged ([details](#courses-add)) |
 | `openexpress courses remove NAME [--apply]` | experimental: remove one course or one GPX file waiting for the device ([details](#courses-remove)) |
@@ -54,7 +59,7 @@ the two are separate installations, see
 | `openexpress gui` | application window (GTK 4 + libadwaita): device, sync, updates, maps, apps, music, activities |
 | `openexpress watch` | background service: sync when a device is connected, with a notification |
 | `openexpress engine` | macOS fork: requests and answers as JSON Lines on stdin and stdout, for the macOS app; the same commands as here, without a terminal ([the protocol](ENGINE.md)) |
-| `openexpress install-desktop [--remove] [--force] [--apply]` | application menu entry and systemd user service (version from source; in the Flatpak it does nothing); `--remove` removes them, `--force` installs them also when the Flatpak is installed |
+| `openexpress install-desktop [--remove] [--apply]` | the menu entry **openExpress (source)** and the systemd user service of the version from source (in the Flatpak it does nothing); first it removes what an older version from source wrote under the Flatpak's ID (only its own menu entries and the program's own icons); `--remove` removes them all |
 
 The NAME of an app is its name in the store or the one the device gives it (they can differ, as
 "My Bike Radar Traffic" and "MyBikeTraffic"), a part of either that only one app has, or its ID.
@@ -146,8 +151,8 @@ as GPX 1.1 files.
 - its log of connections: the newest five, and the storage by kind of file at the last.
 
 `--apply` copies the files it shows now; with it, `--crash-logs` also reads its hidden crash
-logs (the device leaves the file manager for a moment) and `--dumps` also copies its memory
-dumps.
+logs over a direct USB connection (the device disappears from the file manager for a moment)
+and `--dumps` also copies its memory dumps.
 
 `--free-space` is an action of its own (not with `--crash-logs` or `--dumps`): it shows only what
 can be freed on the device, the list of **Free Up Space** on the Device Status page
@@ -185,6 +190,36 @@ Garmin Connect has queued to the device.
   the window), a line says whether Garmin's current satellite data file was written, was already
   on the device or was not written and why; the dry run says whether it would be written.
   `--upload-only` leaves them out.
+
+### updates
+
+`openexpress updates [--reinstalls]` lists the software updates Garmin's update server offers
+the connected device; `--install PART…|all [--apply]` downloads them, checks each by its MD5 and
+copies it to the device. After it is unplugged, the device may ask whether to install the update
+now or later, then restarts.
+
+- A file the device already has with the same size and MD5 is not counted as an update, only
+  listed as "already on the device".
+- `--reinstalls` also lists what can be installed again. A component offered at a lower version
+  than the device lists is installed again only when its file is the one offered, and the list
+  says so.
+- An update whose folder a watch hides inside `GARMIN` from the file manager (on a fēnix 8:
+  `Prompts`, `ASR`, `KBD`, `ExtData`) is written there over a direct USB connection, in the
+  Flatpak with its USB permission; the file it replaces is copied to this computer first and put
+  back when the new one is not written whole
+  ([Files on the device](privacy.md#files-on-the-device)). Without that connection such an
+  update is refused before anything is downloaded, and the others are installed.
+- On such a watch the check also reads, over a direct USB connection, the folder of each offered
+  file the file manager does not show, once (as does `status --online`); a component found there
+  with the name and size offered is listed as "already on the device".
+- On a car navigator that hides its `.System` folder from the file manager, that folder is read
+  once over a direct USB connection (names and sizes); every command that opens such a device
+  reads it once too, as does `status --online`, so that they count and compare what the window
+  does.
+  The updates that go there (and with `--reinstalls` the components installed again) are written
+  as Garmin Express writes them: the old file of that name deleted first, the new one checked by
+  its size and read back whole against its MD5. The device's other updates go first, its own
+  software last, and the first failure stops the rest, saying what is on the device.
 
 ### courses
 
@@ -278,6 +313,6 @@ fēnix 8 Solar
 |---|---|
 | 0 | done (also a dry run) |
 | 1 | an error or a refusal: the device, the account, a server or the network, or a value the command checks itself (e.g. an unknown part in `cache --only`); the message says why; for `fit inspect`, a file that is not a whole FIT file (cut short, damaged, not FIT) or cannot be read; for `diagnostics --free-space --apply`, a file the device kept, a copy that failed, files changed since they were listed, or the update server not asked again before an update file was removed (then none of those is removed) |
-| 2 | a wrong command line: an unknown command or option, a value that is not one of the choices or not a number (e.g. `setup --environment`, `devices --forget`), `--key` without `--secret`, `diagnostics --free-space` with `--crash-logs` or `--dumps`, or a missing argument |
+| 2 | a wrong command line: an unknown command or option, a value that is not one of the choices or not a number (e.g. `setup --environment`, `devices --forget`), `--key` without `--secret`, `diagnostics --free-space` with `--crash-logs` or `--dumps`, `updates --hidden-folder-trial` with `--install all`, or a missing argument |
 | 3 | the first sync with this program waits for a choice: `openexpress baseline --apply` or `openexpress sync --apply --all` |
 | 130 | interrupted (Ctrl+C); not while `sync` waits for TrueUp, which Ctrl+C only stops (the sync then ends as usual) |

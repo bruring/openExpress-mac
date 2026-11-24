@@ -153,11 +153,14 @@ def fetch(
                 elif isinstance(e, DownloadError) and e.status:
                     # The address is signed with the URL salt, not the sign-in: a refusal
                     # (4xx) is an answer of a working server.
-                    netstatus.record(netstatus.OMT, url, e.status if e.status >= 500 else 200)
+                    netstatus.record(netstatus.OMT, url,
+                                     e.status if applog.is_server_error(e.status) else 200)
                 # The text of a requests error names the signed address, query and all.
-                said = applog.network_error_text(e)
-                errors.append(f"{_short(url)}: {said}")
-                log.warning("Download failed (%s)", said)
+                errors.append(f"{_short(url)}: {applog.network_error_text(e)}")
+                # The DownloadError at the end says each address once: on the terminal of the
+                # command line not again.
+                log.warning("Download failed (%s)", applog.network_error_detail(e),
+                            extra=applog.TOLD)
                 if isinstance(e, DownloadError) and e.status and 400 <= e.status < 500:
                     break  # retrying the same request will not help
                 continue
@@ -181,7 +184,9 @@ def fetch(
             log.info("%s, %s", said, "MD5 matches" if size is None else "size and MD5 match")
             part.replace(dest)
             return dest
-    raise DownloadError(_("Could not download the file:") + "\n  " + "\n  ".join(errors))
+    # Each address is asked twice: what both times said is said once.
+    raise DownloadError(_("Could not download the file:") + "\n  "
+                        + "\n  ".join(dict.fromkeys(errors)))
 
 
 def _short(url: str) -> str:

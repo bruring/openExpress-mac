@@ -72,3 +72,15 @@ def test_no_answer_removes_nothing(page):
     win, section, questions, removed = page
     trash(section, "Remove Morning Song.mp3").emit("clicked")
     assert len(questions) == 1 and removed == []  # closed or Cancel: no answer runs
+
+
+def test_a_playlist_not_on_this_computer_asks_for_a_file(in_the_window):
+    """A playlist is one file: chosen where it has no path on this computer, the toast asks for a
+    file, as for a course or a map."""
+    from openexpress.gui import music_page
+
+    asked = []
+    in_the_window("choose_local_file",
+                  lambda win, title, name, patterns, not_local, then: asked.append(not_local))
+    music_page.MusicPage.choose_playlist(types.SimpleNamespace(add_playlist=None))
+    assert asked == ["Choose a file stored on this computer"]

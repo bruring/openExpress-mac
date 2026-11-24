@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from gi.repository import GLib
 
 from openexpress import known_devices, service
+from openexpress.applog import error_text
 from openexpress.device.gio_storage import (
     ABSENT,
     DRIVE_OFF,
@@ -83,7 +84,7 @@ from openexpress.gui.navigation import (
 )
 from openexpress.gui.navigation import plan as detection_plan
 from openexpress.gui.tasks import forget_on_refresh
-from openexpress.gui.window_tasks import error_text, read_space
+from openexpress.gui.window_tasks import read_space
 from openexpress.i18n import N_, _
 
 log = logging.getLogger(__name__)
@@ -572,17 +573,16 @@ class DeviceDetection:
             replug = f" {_(REPLUG_HINT_AFTER_PIN)}" if normal_s >= REPLUG_HINT_S else ""
             return (_("Device Not Ready"),
                     not_offered_text(f"{not_ready_text(state)}{replug}", window=True), False)
-        if state == PRESENT and normal_s >= REPLUG_HINT_S:
-            # One sentence becomes two: each with its full stop.
+        if ((state == PRESENT and normal_s >= REPLUG_HINT_S)
+                or (state == STARTING
+                    and STARTING_REPLUG_HINT_S <= waited_s < WAIT_FOR_DEVICE_S)):
+            # In its normal mode for a while, or still in its transitional mode: one sentence
+            # becomes two, each with its full stop.
             text = _("This takes a moment after the cable is plugged in.")
             return _("Device Starting…"), f"{text} {_(REPLUG_HINT)}", True
         if state == DRIVE_OFF:
             # TRANSLATORS: a device connected as a USB drive, not over MTP
             return _("USB Drive"), drive_off_text(ejected_update_waits()), False
-        if state == STARTING and STARTING_REPLUG_HINT_S <= waited_s < WAIT_FOR_DEVICE_S:
-            # Still in its transitional mode: one sentence becomes two, as above.
-            text = _("This takes a moment after the cable is plugged in.")
-            return _("Device Starting…"), f"{text} {_(REPLUG_HINT)}", True
         if state == ABSENT:
             # TRANSLATORS: title when no device is plugged in: plug it in with a USB cable
             # ("connect", not Garmin Connect)
@@ -726,7 +726,7 @@ class DeviceDetection:
             if current_uri is None:
                 # With no device to open again, a session means the one device connected:
                 # the devices listed before are gone (e.g. one of two unplugged).
-                self.connected.found_alone()
+                self.connected.clear()
             else:
                 self.connected.stop_choosing()
             self.session = result

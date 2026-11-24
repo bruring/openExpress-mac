@@ -5,6 +5,7 @@ All devices are made up."""
 
 import time
 import types
+from datetime import datetime
 
 import pytest
 from fakes import window as stand_in
@@ -138,12 +139,14 @@ def test_the_words_under_a_connected_device_are_its_version_only():
     assert choice_subtitle(summary("mtp", ok=False)) == "Not mounted; choose it to open it"
 
 
-def test_the_tiles_get_what_is_remembered_and_whether_the_account_is_known():
+def test_the_tiles_get_what_is_remembered_and_whether_the_account_is_known(clock):
+    """The updates found an hour and a day ago are still fresh by the made-up clock."""
     from fakes import login
 
     from openexpress import devicelist, tile_facts
     from openexpress.device.gio_storage import DeviceSummary, FoundDevice
 
+    clock.current = datetime.fromtimestamp(NOW + 3600)
     known_devices.remember(EDGE, "Edge 1050", "006-B4440-00", "33.13", "mtp", now=100.0)
     known_devices.set_update_found(EDGE, True, now=NOW, software_version="33.13")
     fenix = 3000000001

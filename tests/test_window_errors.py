@@ -76,6 +76,30 @@ def _window(sections):
 
 
 @pytest.mark.needs_display
+def test_a_page_that_cannot_be_drawn_tells_the_terminal_once_and_filtered(log_file, monkeypatch,
+                                                                           capsys):
+    """The traceback of a page that failed reaches the terminal through the log only: once, with
+    the address of the device and the long number its error names filtered."""
+    from openexpress.gui.app import MainWindow
+    from openexpress.gui.device_page import Section
+
+    monkeypatch.setattr(sys, "excepthook", lambda *exc: None)
+    _gui_log(log_file)
+    capsys.readouterr()
+    sec = Section("apps", "Apps", "application-x-addon-symbolic", "Reading the apps…")
+    win = _window({"apps": sec})
+
+    def broken(result):
+        raise RuntimeError("cannot draw mtp://091e_51b4_0000abcdef12/GARMIN for 3987654321")
+
+    win.load_apps = lambda: win._load("apps", "Reading the apps…", lambda: "the apps", broken)
+    MainWindow.load_section(win, "apps")
+    err = capsys.readouterr().err
+    assert (err.count("Traceback"), "0000abcdef12" in err, "3987654321" in err) == (1, False, False)
+    assert "RuntimeError: cannot draw mtp://<device>/GARMIN for <number>" in err
+
+
+@pytest.mark.needs_display
 def test_a_page_that_cannot_be_drawn_says_so_and_loads_anew(log_file, monkeypatch):
     from openexpress.gui.app import MainWindow
     from openexpress.gui.device_page import Section

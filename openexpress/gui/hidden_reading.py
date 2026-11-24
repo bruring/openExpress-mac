@@ -2,9 +2,11 @@
 (a car navigator's .System) through openExpress's own USB session (hidden_folders): once a
 connection, right after the device was opened, when what its first checks found (its updates,
 its maps) goes to such a folder or the device is known to hide one; again only when the user
-asks (Check Again, Refresh). It reads what the command line reads (folders_to_read), so that
-both count the same. The device leaves the file manager for a moment, so the reading is a
-task: never during another one, and after the diagnostics of the opening are read.
+asks (Check Again, Refresh), or after a reading refused as busy, at the next first check (at
+most hidden_folders.BUSY_TRIES times a connection). It reads what the command line reads
+(still_to_read), so that both count the same. The device leaves the file manager for a
+moment, so the reading is a task: never during another one, and after the diagnostics of the
+opening are read.
 
 Has: nothing; the device's session keeps the folders wanted and whether they are being read
 (DeviceSession.hidden_wanted, hidden_reading)."""
@@ -13,7 +15,8 @@ import logging
 
 from gi.repository import GLib
 
-from openexpress import hidden_folders
+from openexpress import applog, hidden_folders
+from openexpress.device.storage import connection
 from openexpress.gui.window_tasks import count_again
 
 log = logging.getLogger(__name__)
@@ -22,14 +25,17 @@ log = logging.getLogger(__name__)
 RETRY_MS = 700
 
 
-def note_needed(win, s, folders: list[str]) -> None:
+def note_needed(win, s, folders: list[str], inside: list[str] = ()) -> None:
     """A first check of the open device `s` (updates, maps) found what goes to `folders`, which
-    ordinary MTP does not show: they are read once neither first check runs any more, unless
-    this connection was read already."""
+    ordinary MTP does not show, and the files in folders `inside` folders that are seen that the
+    file manager does not show (updates.session_folders): they are read once neither first check
+    runs any more, each only once a connection."""
     if win.session is not s or not hasattr(s, "hidden_wanted"):
         return  # no device, or a session made up for a page alone
     for folder in folders:
         s.hidden_wanted.setdefault(folder.casefold(), folder)
+    for folder in inside:
+        s.inside_wanted.setdefault(folder.casefold(), folder)
     _start(win, s)
 
 
@@ -51,16 +57,24 @@ def _folders(s) -> list[str]:
     alone)."""
     if not hasattr(s, "hidden_wanted"):
         return []
-    return hidden_folders.folders_to_read(s.device, s.hidden_wanted.values())
+    return hidden_folders.folders_to_read(s.device, s.hidden_wanted.values(),
+                                          inside=s.inside_wanted.values())
 
 
 def _start(win, s) -> None:
+    kept = hidden_folders.kept(s.storage) if hasattr(s, "storage") else None
     if (win.session is not s or not hasattr(s, "hidden_wanted") or s.hidden_reading
-            or hidden_folders.kept(s.storage) is not None):
+            or (kept is not None and kept.state != hidden_folders.READ)):
+        return  # a reading that failed, or no session to be had, is said once a connection
+    if hidden_folders.busy_failures(s.storage) >= hidden_folders.BUSY_TRIES:
+        if not applog.unchanged("hidden folders busy", connection(s.storage), True):
+            log.info("hidden folders: refused as busy %d times this connection; read again "
+                     "only when asked (Check Again, Refresh)", hidden_folders.BUSY_TRIES)
         return
     if win._update_check_session is s or win._map_check_session is s:
         return  # the other first check may need a folder too: it ends with note_needed
-    folders = _folders(s)
+    folders = hidden_folders.still_to_read(s.storage, s.device, s.hidden_wanted.values(),
+                                           inside=s.inside_wanted.values())
     if not folders:
         return
     if win.busy:

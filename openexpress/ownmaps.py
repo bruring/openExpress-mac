@@ -20,6 +20,7 @@ from pathlib import Path
 from openexpress import applog, hidden_folders, paths
 from openexpress.device.storage import DeviceError, DeviceNotResponding, Storage
 from openexpress.device.xmldevice import GarminDevice
+from openexpress.errors import sentence
 from openexpress.i18n import _
 from openexpress.maps import SPACE_MARGIN, MapError, read_only_text
 from openexpress.progress import byte_steps, checking_text, copying_text
@@ -297,7 +298,7 @@ def add(plan: AddPlan, device: GarminDevice, storage: Storage,
         raise _taken(plan.name)  # it appeared since the plan was made
     name = plan.title or plan.name
     try:
-        # Kept by the storage when it fails: removed here, and said so (_failed_text).
+        # Kept by the storage when it fails: removed here, and said so.
         real = storage.write_file_checked(plan.path, plan.local,
                                           byte_steps(progress, copying_text(name)),
                                           keep_partial=True,
@@ -305,26 +306,59 @@ def add(plan: AddPlan, device: GarminDevice, storage: Storage,
         size = plan.local.stat().st_size  # what the check compared the device's file with
     except DeviceNotResponding:
         raise
-    except (DeviceError, OSError) as e:
-        log.warning("own map: the copy failed (%s)", type(e).__name__)
-        raise MapError(f"{_failed_text(storage, plan.path)} ({e})") from e
+    except DeviceError as e:  # its words name the file already
+        log.warning("own map: the copy failed (%s)", type(e).__name__, extra=applog.TOLD)
+        raise MapError(_words_and_leftover(storage, plan.path, e)) from e
+    except OSError as e:
+        log.warning("own map: the copy failed (%s)", type(e).__name__, extra=applog.TOLD)
+        said = applog.system_words(e) or e
+        raise MapError(f"{_failed_text(storage, plan.path)} ({said})") from e
     _record(device, {"filename": plan.name, "size": size, "title": plan.title,
                      "added": datetime.now().isoformat(timespec="seconds")})
     log.info("own map added: %s", applog.size(size))  # no names: they are the user's
     return real
 
 
-def _failed_text(storage: Storage, path: str) -> str:
-    """Remove what a failed copy left behind and say what happened to it."""
+def _remove_leftover(storage: Storage, path: str) -> bool | None:
+    """Remove what a failed copy left behind: None when it left nothing, else whether it is
+    gone."""
     if storage.resolve(path) is None:
-        # TRANSLATORS: copying a map file to the device failed; {path}: the file's path on the
-        # device
-        return _("Writing {path} failed.").format(path=path)
+        return None
     try:
         storage.delete(path)
     except DeviceNotResponding:
         raise
     except (DeviceError, OSError):
+        return False
+    return True
+
+
+def _words_and_leftover(storage: Storage, path: str, error: DeviceError) -> str:
+    """The words of the storage, which name the file, and what became of what the copy left."""
+    removed = _remove_leftover(storage, path)
+    if removed is None:
+        return str(error)
+    if removed:
+        # TRANSLATORS: after the words of a failed copy of a map of the user's own to the
+        # device, which name the file (e.g. "Cannot write GARMIN/x.img: Input/output error."):
+        # what the copy left was deleted
+        return f"{sentence(error)} {_('The incomplete file was removed from the device.')}"
+    # TRANSLATORS: after the words of a failed copy of a map of the user's own to the device,
+    # which name the file: what the copy left could not be deleted; {path}: its path on the
+    # device, e.g. GARMIN/x.img
+    left = _("The incomplete file could not be removed; delete {path} from the device "
+             "yourself.").format(path=path)
+    return f"{sentence(error)} {left}"
+
+
+def _failed_text(storage: Storage, path: str) -> str:
+    """Remove what a failed copy left behind and say what happened to it."""
+    removed = _remove_leftover(storage, path)
+    if removed is None:
+        # TRANSLATORS: copying a map file to the device failed; {path}: the file's path on the
+        # device
+        return _("Writing {path} failed.").format(path=path)
+    if not removed:
         return _("Writing {path} failed and the incomplete file could not be removed; "
                  "delete {path} from the device yourself.").format(path=path)
     return _("Writing {path} failed; the incomplete file was removed from the device."

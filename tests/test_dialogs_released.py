@@ -6,7 +6,7 @@ import gc
 import types
 
 import pytest
-from fakes import RunNow, descendants, window_methods
+from fakes import RunNow, descendants, preferences_window, window_methods
 from fakes import window as stand_in
 
 
@@ -26,18 +26,6 @@ def _settle():
             pass
 
 
-def _preferences_window():
-    from openexpress.gui.app import MainWindow
-
-    win = stand_in(busy=False, _action_buttons=[], _background_enabled=lambda: False,
-                   set_background=lambda on, done=None: None, choose_dll=lambda: None,
-                   error=lambda title, text: None, run_task=None, toast=None)
-    for name in ("_button", "_cache_group", "_ask_clear_cache", "_account_group",
-                 "_account_action"):
-        setattr(win, name, types.MethodType(getattr(MainWindow, name), win))
-    return win
-
-
 @pytest.mark.needs_display
 def test_the_preferences_are_released_once_closed(monkeypatch, xdg):
     from gi.repository import Adw
@@ -46,7 +34,7 @@ def test_the_preferences_are_released_once_closed(monkeypatch, xdg):
 
     shown = []
     monkeypatch.setattr(Adw.PreferencesDialog, "present", lambda self, parent: shown.append(self))
-    win = _preferences_window()
+    win = preferences_window()
     MainWindow.show_preferences(win)
     dialog = shown.pop()
     gone = _finalized(dialog)
@@ -76,7 +64,7 @@ def test_the_preferences_and_the_question_of_the_cache_are_released(monkeypatch,
     maps = cache.paths.cache_dir() / "maps"
     maps.mkdir(parents=True)
     (maps / "m").write_bytes(b"x" * 100)
-    win = _preferences_window()
+    win = preferences_window()
 
     win.run_task = RunNow()
     MainWindow.show_preferences(win)
@@ -128,7 +116,7 @@ def test_the_language_changed_in_the_preferences_says_to_restart(monkeypatch, xd
     add = Adw.PreferencesPage.add
     monkeypatch.setattr(Adw.PreferencesPage, "add",
                         lambda page, group: groups.append(group) or add(page, group))
-    MainWindow.show_preferences(_preferences_window())
+    MainWindow.show_preferences(preferences_window())
     (language,) = [g for g in groups if g.get_title() == "Language"]
     combo = next(w for w in descendants(language) if isinstance(w, Adw.ComboRow))
     groups.clear()

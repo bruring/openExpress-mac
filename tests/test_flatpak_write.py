@@ -100,8 +100,13 @@ def test_host_copy_error_is_reported(flatpak, monkeypatch):
 # --- the temporary file on the way to the device ------------------------------------------------
 
 
+# A temporary file the user does not know of: its path and the number of the error are not
+# said, the system's words are.
+STAGED = "/made-up/cache/openexpress/transfer/openexpress-x"
+
+
 def _no_room(**kwargs):
-    raise OSError(28, "No space left on device")
+    raise OSError(28, "No space left on device", STAGED)
 
 
 def _private_file(tmp_path, monkeypatch):
@@ -117,7 +122,7 @@ def test_bytes_without_a_temporary_file_are_a_copy_not_started(flatpak, monkeypa
     monkeypatch.setattr(gio_storage.tempfile, "mkstemp", _no_room)
     with pytest.raises(CopyNotStarted) as said:
         st._write("GARMIN/x.FIT", b"DATA")
-    assert str(said.value) == "Cannot write GARMIN/x.FIT: [Errno 28] No space left on device"
+    assert str(said.value) == "Cannot write GARMIN/x.FIT: No space left on device"
     assert calls == []
 
 
@@ -156,7 +161,7 @@ def test_a_private_file_without_a_staging_file_is_a_copy_not_started(flatpak, tm
     monkeypatch.setattr(gio_storage.tempfile, "mkstemp", _no_room)
     with pytest.raises(CopyNotStarted) as said:
         st._write_file("GARMIN/map.img", local)
-    assert str(said.value) == "Cannot write GARMIN/map.img: [Errno 28] No space left on device"
+    assert str(said.value) == "Cannot write GARMIN/map.img: No space left on device"
     assert calls == []
 
 
@@ -168,12 +173,12 @@ def test_a_private_file_that_cannot_be_staged_leaves_no_staging_file(flatpak, tm
 
     def broken(src, dst):
         made.append(Path(dst))
-        raise OSError(5, "Input/output error")
+        raise OSError(5, "Input/output error", STAGED)
 
     monkeypatch.setattr(gio_storage.shutil, "copyfile", broken)
     with pytest.raises(CopyNotStarted) as said:
         st._write_file("GARMIN/map.img", local)
-    assert str(said.value) == "Cannot write GARMIN/map.img: [Errno 5] Input/output error"
+    assert str(said.value) == "Cannot write GARMIN/map.img: Input/output error"
     assert calls == [] and made[0].parent == gio_storage._staging_dir()
     assert not made[0].exists()
 

@@ -1,7 +1,8 @@
 """The page Device Status checked through its states in the real window, before a trial on a
 device: made-up devices shaped like a watch, a bike computer and a test drive, in the narrowest
 window and a wide one, in English, Polish and German. tools/status-review.py runs it and gathers a
-picture of every state.
+picture of every state. Besides, the Maps page with a map refused (its folder hidden inside a
+seen one) and the device page after it, in English and Polish.
 
 The states: connected; every crash and update shown (Show All); after Copy Crash Logs; after
 another file written to the device; after Refresh on the page; after Free Up Space; after the file
@@ -30,7 +31,18 @@ from pathlib import Path
 
 import pytest
 from conftest import DEVICE_XML
-from fakes import descendants, gtk_complaints, make_client, program_style, window_picture
+from fakes import (
+    REGION_COMPONENT,
+    descendants,
+    gtk_complaints,
+    make_client,
+    map_entry,
+    offered_update,
+    program_style,
+    ptp_opened,
+    window_picture,
+    xml_with,
+)
 
 from openexpress.status import SHOWN_EVENTS
 
@@ -766,3 +778,137 @@ def test_the_page_chosen_while_another_task_runs(review, shape, width, language)
         assert not r.win.status_facts.device_busy and not sec.banner.get_revealed()
         check(r, said, "after-the-task", r.win.status_facts)
         agree(r, s)
+
+
+# --- the Maps page: a map refused -------------------------------------------------------------
+
+# The made-up watch names Garmin/RegionMaps for its own files (REGION_COMPONENT) and its listing
+# does not show it, so the device hides it inside Garmin.
+REFUSED_MAP = "Made-up Region"
+
+
+def _refused_map() -> dict:
+    return map_entry(REFUSED_MAP, "Garmin/RegionMaps/D0000001A.img", size=4_000_000)
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, WIDE], ids=["360", "wide"])
+def test_the_maps_page_says_why_a_map_into_a_folder_hidden_inside_is_refused(review, width,
+                                                                             language,
+                                                                             monkeypatch):
+    """The map's row says why in place of the button, the words of the refusal; the device
+    page after it. Pictures: shape "maps" in the review."""
+    from gi.repository import Adw, Gtk
+
+    from openexpress import maps
+
+    monkeypatch.setattr(maps, "check", lambda client, device, ask=None, country=None:
+                        maps.read_maps({"maps": [_refused_map()]}))
+    with gtk_complaints(("Adwaita", "Gtk", "GLib", "GLib-GObject")) as said:
+        r = review(language, width)
+        r.shape = "maps"
+        shape = SHAPES["watch"]
+        root = r.root / "maps"
+        make_device(root, shape)
+        xml_with(root, REGION_COMPONENT, folder="Garmin")
+        s = session_of(root, shape)
+        r.plugged["now"] = s
+        r.win.refresh_device()
+        wait(lambda: r.win.session is s and not r.win.busy, "the watch opened")
+        sec = r.win.sections["maps"]
+        r.win.select_section("maps")
+        wait(lambda: sec.loaded and not r.win.busy
+             and sec.stack.get_visible_child_name() == "content", "the page Maps")
+        iterate(0.2)
+        (row,) = [w for w in descendants(sec.stack)
+                  if isinstance(w, Adw.ActionRow) and w.get_title() == REFUSED_MAP]
+        assert row.get_subtitle().endswith(
+            "\n" + maps.not_installed_hidden_inside("Garmin/RegionMaps"))
+        assert not [w for w in descendants(row) if isinstance(w, Gtk.Button)]
+        assert said == [], said
+        if r.width == NARROWEST:
+            narrowest = r.win.get_content().measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+            assert narrowest <= NARROWEST, f"the window needs {narrowest} px"
+        shot(r, "map-refused")
+        r.win.select_section("watch")
+        wait(lambda: r.win.sections["watch"].loaded and not r.win.busy, "the device page")
+        shot(r, "device-page")
+        assert said == [], said
+
+
+# The watch's voice prompts in Garmin/Prompts, a folder its GarminDevice.xml names and the file
+# manager does not show: only its own USB session sees them.
+PROMPT_COMPONENT = """  <UpdateFile><PartNumber>006-D0001-00</PartNumber><Version><Major>2</Major>
+   <Minor>18</Minor></Version><Path>Garmin/Prompts</Path><FileName>prompt_bundle.hvm</FileName>
+  </UpdateFile>
+"""
+PROMPTS = b"made-up voice prompts " * 400
+PROMPTS_NAME = "Made-up Voice Prompts"
+
+
+def _prompts_offered() -> dict:
+    return {"updates": [offered_update("006-D0001-00", PROMPTS_NAME, "Garmin\\Prompts",
+                                       "prompt_bundle.hvm", PROMPTS)]}
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, WIDE], ids=["360", "wide"])
+def test_the_updates_page_lists_a_hidden_file_on_the_device_with_the_components(review, width,
+                                                                               language,
+                                                                               monkeypatch):
+    """A watch that hides its folder Prompts: read through its own session once it is opened
+    (the check of the device page, updates.session_folders), its voice prompts at the size
+    offered are on the device, so the page lists them with the components already there, with
+    Reinstall, not as an update. Pictures: shape "updates" in the review."""
+    from gi.repository import Adw, Gtk
+    from ptp_fake import FakeDevice
+
+    from openexpress import hidden_folders
+    from openexpress.connect import lower_keys
+    from openexpress.gui.app import MainWindow
+    from openexpress.gui.device_page import DevicePage
+
+    # The device page's check after the opening, which reads what the file manager does not
+    # show (the review leaves it out elsewhere).
+    monkeypatch.setattr(MainWindow, "_check_updates_quietly", DevicePage._check_updates_quietly)
+    with gtk_complaints(("Adwaita", "Gtk", "GLib", "GLib-GObject")) as said:
+        r = review(language, width)
+        r.shape = "updates"
+        shape = SHAPES["watch"]
+        root = r.root / "updates"
+        make_device(root, shape)
+        xml_with(root, PROMPT_COMPONENT, folder="Garmin")
+        fake = FakeDevice()
+        fake.add("Garmin/GarminDevice.xml", b"<Device/>")
+        fake.add("Garmin/Prompts", hidden=True)
+        fake.add("Garmin/Prompts/prompt_bundle.hvm", PROMPTS, hidden=True)
+        s = session_of(root, shape)
+        s.storage.exclusive_ptp = lambda: ptp_opened(fake)
+        answer = lower_keys(_prompts_offered())
+        monkeypatch.setattr(s.client, "software_updates",
+                            lambda raw, include_reinstalls=False: answer)
+        monkeypatch.setattr(s.client, "unit_info", lambda unit_id, part_number: {})
+        r.plugged["now"] = s
+        r.win.refresh_device()
+        wait(lambda: r.win.session is s and not r.win.busy
+             and hidden_folders.kept(s.storage) is not None, "the watch opened, Prompts read")
+        sec = r.win.sections["updates"]
+        r.win.select_section("updates")
+        wait(lambda: sec.loaded and not r.win.busy
+             and sec.stack.get_visible_child_name() == "content", "the page Updates")
+        iterate(0.2)
+        (rows,) = [[w for w in descendants(e) if isinstance(w, Adw.ActionRow)
+                    and w.get_title() == PROMPTS_NAME]
+                   for e in descendants(sec.stack) if isinstance(e, Adw.ExpanderRow)]
+        (expander,) = [e for e in descendants(sec.stack) if isinstance(e, Adw.ExpanderRow)]
+        expander.set_expanded(True)
+        iterate(0.2)
+        assert len(rows) == 1
+        assert [b.get_label() for b in descendants(rows[0]) if isinstance(b, Gtk.Button)] == [
+            {"en": "Reinstall", "pl": "Zainstaluj ponownie"}[language]]
+        assert said == [], said
+        if r.width == NARROWEST:
+            narrowest = r.win.get_content().measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+            assert narrowest <= NARROWEST, f"the window needs {narrowest} px"
+        shot(r, "hidden-file-on-device")
+        assert said == [], said

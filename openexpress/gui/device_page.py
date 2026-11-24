@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import sys
 import threading
-import traceback
 import types
 from datetime import datetime
 
@@ -36,6 +35,7 @@ from openexpress import (  # noqa: E402
     sync,
     tile_facts,
 )
+from openexpress.applog import error_text  # noqa: E402
 from openexpress.connect import ApiError, NotAccountDevice, OwnershipError  # noqa: E402
 from openexpress.device.gio_storage import DeviceSummary, FoundDevice  # noqa: E402
 from openexpress.device.storage import DeviceError, DeviceNotResponding  # noqa: E402
@@ -71,13 +71,13 @@ from openexpress.gui.window_tasks import (  # noqa: E402
     chip,
     confirm,
     diagnostics_state,
-    error_text,
     inform,
     log_unexpected,
     refresh_space,
     render_space,
     row_label,
     still_in_window,
+    switch_saved,
 )
 from openexpress.gui.words import (  # noqa: E402
     checked_text,
@@ -263,7 +263,6 @@ def show_loaded(win, key: str, show, result) -> None:
         # Not "loading" for good: the page says so, and is read again when it is chosen again
         # (or with Try again).
         log_unexpected(f"showing the page {key}", sys.exc_info())
-        traceback.print_exc()  # to stderr too
         sec.loaded = False
         sec.clear()
         win._action_buttons = still_in_window(win._action_buttons)
@@ -495,19 +494,16 @@ def read_diagnostics(win) -> None:
             reading.set()  # also when it failed: the tasks go on
         read_satellite(s)
 
-    def done(_result) -> None:
+    def done(_result_or_error) -> None:
+        # Read or not: the row, and the page when it waits or is shown (when the reading
+        # failed, as the records tell them).
         if win.session is s:
-            status_changed(win)  # the row, and the page when it waits or is shown
-            show_satellite(win)
-
-    def failed(_error) -> None:
-        if win.session is s:
-            status_changed(win)  # the row and the page as the records tell them
+            status_changed(win)
             show_satellite(win)
 
     # Once the page is shown, not in the opening: on a watch it took 3.7-4.4 s of the
     # 4.5-5 s of an opening.
-    win.in_background(work, done, failed)
+    win.in_background(work, done, done)
 
 
 def read_satellite(s) -> None:
@@ -525,7 +521,7 @@ def read_satellite(s) -> None:
 def satellite_row(win) -> Adw.SwitchRow:
     """The row Satellite Data of the device page: hidden until the device is known to have the
     satellite data file of the format known (show_satellite); its switch turns them on or off
-    for the device."""
+    for the device, and goes back saying why when that cannot be saved (switch_saved)."""
     # TRANSLATORS: row of the device page, with a switch: the GPS satellite data of a watch
     # that keeps it as CPE.BIN, written with each sync while on
     row = Adw.SwitchRow(title=_("Satellite Data"), visible=False)
@@ -533,10 +529,14 @@ def satellite_row(win) -> Adw.SwitchRow:
     def switched(r, _param) -> None:
         s = win.session
         state = s.satellite if s is not None else None
-        if state is None or r.get_active() == state.on:
+        if state is None:
             return
-        s.satellite = satellite.set_on(s.device.unit_id, r.get_active())
-        show_satellite(win)
+
+        def save(on: bool) -> None:
+            s.satellite = satellite.set_on(s.device.unit_id, on)
+
+        if switch_saved(win, r, switched, state.on, save):
+            show_satellite(win)
 
     row.connect("notify::active", switched)
     return row
@@ -1413,8 +1413,9 @@ class DevicePage:
             if self.session is not s:
                 return
             self._set_update_state(*result)
-            # What goes to a folder of the top level ordinary MTP does not show: read once.
-            note_needed(self, s, upd.hidden_needed(result[0]))
+            # What goes to a folder of the top level ordinary MTP does not show, and the files
+            # the file manager does not show on a device that hides something: read once.
+            note_needed(self, s, *upd.session_folders(s.storage, result[0]))
 
         def failed(_e):
             if self._update_check_session is s:
@@ -1497,7 +1498,7 @@ class DevicePage:
             self.map_state = "noted"
         elif held:
             self.map_state = "onboard"
-        elif any(m.installed or m.incomplete for m in all_maps):
+        elif self.map_count:
             self.map_state = "current"
         else:
             self.map_state = "empty"
@@ -1543,7 +1544,7 @@ class DevicePage:
                 return NO_MAPS  # the row says so
             except mp.MapsNotSupported:
                 return None  # the row says so; nothing to read on the device
-            mp.mark_waiting(s.storage, result[0])
+            mp.mark_waiting(s.storage, result[0], s.device)
             return result
 
         self.in_background(work, done, failed)

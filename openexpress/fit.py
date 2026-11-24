@@ -339,8 +339,7 @@ MESG_CALLBACK_DELAY = 197  # Garmin-internal message used by TrueUp
 def true_up_time(data: bytes) -> int | None:
     """Unix time at which Connect asks the client to check back (TrueUp)."""
     v = find_message(data, MESG_CALLBACK_DELAY)
-    t = _whole_number(v.get(0)) if v else None
-    return None if t is None else t + FIT_EPOCH_OFFSET
+    return _unix_time(v.get(0)) if v else None
 
 
 class FileState(Enum):
@@ -442,13 +441,19 @@ def summary(data: bytes) -> ActivitySummary:
                          for s in sessions)
                      or _a_record_has_a_position(data))
     heart_rate = _weighted(sessions, lambda s: _whole_number(s.get(_SESSION_AVG_HEART_RATE)))
-    return ActivitySummary(
-        state, created=created, start=_unix_time(sessions[0].get(_SESSION_START_TIME)),
-        sport=_sport(sessions), timer_time=_total(sessions, _SESSION_TIMER_TIME, 1000),
-        distance=_total(sessions, _SESSION_DISTANCE, 100),
-        ascent=_total(sessions, _SESSION_ASCENT), has_positions=has_positions,
-        avg_heart_rate=round(heart_rate) if heart_rate is not None else None,
-        calories=_total(sessions, _SESSION_CALORIES))
+    return ActivitySummary(state, created=created, **_basics(sessions),
+                           has_positions=has_positions,
+                           avg_heart_rate=round(heart_rate) if heart_rate is not None else None,
+                           calories=_total(sessions, _SESSION_CALORIES))
+
+
+def _basics(sessions: list[dict[int, Value]]) -> dict:
+    """The start of the first session, the sport, and the timer time, distance and ascent of
+    them all: what summary and _sessions_together both say."""
+    return {"start": _unix_time(sessions[0].get(_SESSION_START_TIME)), "sport": _sport(sessions),
+            "timer_time": _total(sessions, _SESSION_TIMER_TIME, 1000),
+            "distance": _total(sessions, _SESSION_DISTANCE, 100),
+            "ascent": _total(sessions, _SESSION_ASCENT)}
 
 
 # FIT profile: the names of the messages `fit inspect` names (others: by number).
@@ -834,20 +839,16 @@ def _sessions_together(sessions: list[dict[int, Value]]) -> dict:
     looked at); the details (_details_together)."""
     if not sessions:
         return {}
-    timer_time = _total(sessions, _SESSION_TIMER_TIME, 1000)
-    distance = _total(sessions, _SESSION_DISTANCE, 100)
+    basics = _basics(sessions)
+    timer_time, distance = basics["timer_time"], basics["distance"]
     if len(sessions) == 1:
         avg_speed = _speed(sessions[0], _SESSION_ENHANCED_AVG_SPEED, _SESSION_AVG_SPEED)
     else:
         avg_speed = distance / timer_time if distance is not None and timer_time else None
     avg_heart_rate = _weighted(sessions, lambda s: _whole_number(s.get(_SESSION_AVG_HEART_RATE)))
     return {
-        "start": _unix_time(sessions[0].get(_SESSION_START_TIME)),
-        "sport": _sport(sessions),
+        **basics,
         "elapsed_time": _total(sessions, _SESSION_ELAPSED_TIME, 1000),
-        "timer_time": timer_time,
-        "distance": distance,
-        "ascent": _total(sessions, _SESSION_ASCENT),
         "avg_speed": avg_speed,
         "avg_heart_rate": round(avg_heart_rate) if avg_heart_rate is not None else None,
         "max_heart_rate": _greatest(sessions, lambda s: _whole_number(
@@ -983,9 +984,9 @@ def describe(data: bytes) -> Described:
             elif num == _MESG_LAP:
                 laps.append(_lap(values))
             else:
-                day = _whole_number(values.get(_SCHEDULE_TIME))
+                day = _unix_time(values.get(_SCHEDULE_TIME))
                 if day is not None:
-                    days.append(day + FIT_EPOCH_OFFSET)
+                    days.append(day)
     except FitError:
         pass
     return Described(

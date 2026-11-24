@@ -193,7 +193,7 @@ def test_only_an_rtl_trap_of_the_last_30_days_is_a_crash():
 def test_the_logs_are_read_with_the_copy_off_and_nothing_is_copied(device, clock):
     st, dev = device
     found = diagnostics.at_open(dev, st)
-    crash = diagnostics.last_crash(found.entries, datetime.now())
+    crash = diagnostics.last_crash(found.entries, clock.current)  # never the computer's clock
     assert crash is not None and crash.at == datetime(2026, 10, 20, 22, 24, 6)
     assert found.copied is None
     assert not diagnostics.folder(UNIT).exists()
@@ -487,7 +487,7 @@ def test_without_access_to_usb_it_says_why(device):
     with pytest.raises(diagnostics.DiagnosticsError, match="Flatpak version has no access"):
         diagnostics.copy_crash_logs(dev, st)
     st.blocked = False
-    with pytest.raises(diagnostics.DiagnosticsError, match="cannot open its own USB session"):
+    with pytest.raises(diagnostics.DiagnosticsError, match="cannot open a direct USB connection"):
         diagnostics.copy_crash_logs(dev, st)
 
 
@@ -820,6 +820,58 @@ def test_the_preferences_switch_turns_the_copy_on_and_off():
     assert diagnostics.copy_on() and Settings.load().diagnostics_copy
     switch.set_active(False)
     assert not diagnostics.copy_on()
+
+
+@pytest.mark.needs_display
+def test_a_switch_not_saved_says_why_in_the_systems_words(monkeypatch):
+    """The settings file cannot be written: the system's words, without the number of the error
+    or the path of the temporary file; the switch goes back."""
+    from gi.repository import Adw
+
+    from openexpress.gui.preferences import diagnostics_group
+
+    saves = []
+    save = Settings.save
+
+    def refused_once(self):
+        # Once only: putting the switch back is a change the row may tell again, saved then.
+        saves.append(self.diagnostics_copy)
+        if len(saves) == 1:
+            raise PermissionError(13, "Permission denied", "/made-up/openexpress/settings.json.tmp")
+        save(self)
+
+    monkeypatch.setattr(Settings, "save", refused_once)
+    said = []
+    group = diagnostics_group(stand_in(error=lambda title, text: said.append((title, text))))
+    switch = next(w for w in descendants(group) if isinstance(w, Adw.SwitchRow))
+    switch.set_active(True)
+    assert said == [("Setting Not Saved", "Permission denied")]
+    assert not switch.get_active()
+
+
+@pytest.mark.needs_display
+def test_a_switch_never_saved_goes_back_once_and_asks_no_more(monkeypatch):
+    """The settings file cannot be written at all (no permission, a full disk): the switch goes
+    back once and the window says it once; putting it back is no change to save (libadwaita
+    may tell it again despite the handler being blocked)."""
+    from gi.repository import Adw
+
+    from openexpress.gui.preferences import diagnostics_group
+
+    saves = []
+
+    def refused(self):
+        saves.append(self.diagnostics_copy)
+        if len(saves) < 10:  # a fuse: the test ends even where the switch would go on forever
+            raise PermissionError(13, "Permission denied", "/made-up/openexpress/settings.json.tmp")
+
+    monkeypatch.setattr(Settings, "save", refused)
+    said = []
+    group = diagnostics_group(stand_in(error=lambda title, text: said.append((title, text))))
+    switch = next(w for w in descendants(group) if isinstance(w, Adw.SwitchRow))
+    switch.set_active(True)
+    assert (saves, said, switch.get_active()) == (
+        [True], [("Setting Not Saved", "Permission denied")], False)
 
 
 # --- the command line -----------------------------------------------------------------------

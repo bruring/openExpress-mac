@@ -56,16 +56,19 @@ def test_the_updates_page_says_the_state_in_the_words_of_the_device_row(entries,
 
 
 @pytest.mark.needs_display
-@pytest.mark.parametrize("drive, words", [
-    (False, "Update ready: unplug the device to install it"),
-    (True, "Update ready: eject the device to install it"),
+@pytest.mark.parametrize("drive, row, line", [
+    (False, "Update ready: unplug the device to install it", "Unplug the device to install it"),
+    (True, "Update ready: eject the device to install it", "Eject the device to install it"),
 ])
-def test_an_update_ready_is_said_alike_on_the_row_and_the_updates_page(drive, words):
-    """The title says what to do; the line under it the versions only (not the same words
-    again)."""
+def test_an_update_ready_is_said_alike_on_the_row_and_the_updates_page(drive, row, line):
+    """The row says it in one sentence; the Updates page in a short heading and what to do
+    under it, the same words, then the versions only (not the same words again)."""
     _win, status, _groups, _buttons = _updates_page(_staged_items(), drive=drive)
-    title, versions = status["texts"][0][0], status["texts"][1][0]
-    assert title == words == _row_text(_staged_items(), drive=drive)
+    heading, said, versions = (text for text, _styles in status["texts"][:3])
+    assert (heading, said) == ("Update Ready", line)
+    assert _row_text(_staged_items(), drive=drive) == row
+    # The row's sentence is the heading and the line under it, but for the letter case.
+    assert row.casefold() == f"{heading}: {said}".casefold()
     assert "install it" not in versions and "23.39" in versions
 
 
@@ -139,6 +142,7 @@ def test_the_music_page_says_the_space_in_the_same_words(free, said):
 
 @pytest.mark.parametrize("slots, space, said", [
     (3, 1_200_000, f"3 free slots{NB}· 1.2{NB}MB free"),
+    (2, 2048, f"2 free slots{NB}· 2.0{NB}kB free"),
     (None, 1_200_000, f"1.2{NB}MB free"),
     (2, None, f"2 free slots{NB}· Not known"),
 ])

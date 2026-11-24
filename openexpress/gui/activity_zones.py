@@ -112,14 +112,20 @@ class ZoneList(Gtk.Box):
 
     def __init__(self, zones):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        group = Adw.PreferencesGroup(title=zones_title())
-        method = zones_method_text(zones)
-        if method:
-            group.set_description(method)
-        listed = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        listed.add_css_class("boxed-list")
         self.rows = [ZoneRow(number, zones) for number in reversed(range(len(zones.times)))]
-        for row in self.rows:
-            listed.append(Gtk.ListBoxRow(child=row, activatable=False))
-        group.add(listed)
-        self.append(group)
+        self.append(boxed_section(zones_title(), self.rows, zones_method_text(zones)))
+
+
+def boxed_section(title: str, rows: list[Gtk.Widget],
+                  description: str | None = None) -> Adw.PreferencesGroup:
+    """A section of an activity's page: its title, `description` under it when there is one,
+    and `rows` in a boxed list, none of them activatable."""
+    group = Adw.PreferencesGroup(title=title)
+    if description:
+        group.set_description(description)
+    listed = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+    listed.add_css_class("boxed-list")
+    for row in rows:
+        listed.append(Gtk.ListBoxRow(child=row, activatable=False))
+    group.add(listed)
+    return group

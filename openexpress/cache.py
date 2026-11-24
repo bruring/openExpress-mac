@@ -29,8 +29,9 @@ CATEGORIES = {"maps": ("maps",), "updates": ("software",), "pictures": ("images"
               "answers": ("answers",),
               # The tiles of OpenStreetMap under the maps of activities (gui/activity_map.py).
               "tiles": ("tiles",),
-              # Files on their way to the device (the Flatpak), and what older versions left.
-              "temp": ("transfer", "tmp")}
+              # Files on their way to the device (the Flatpak), large files of the device read
+              # whole (whole_reads.FOLDER), and what older versions left.
+              "temp": ("transfer", "tmp", "device-reads")}
 CATEGORY_NAMES = {
     # TRANSLATORS: the parts of the cache, as `openexpress cache` lists them
     "maps": N_("Maps"),

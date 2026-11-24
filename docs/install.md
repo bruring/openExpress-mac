@@ -21,8 +21,9 @@ Requirements:
 - Linux with Python 3.11+, `requests`, PyGObject 3.46+ with GTK 4, libadwaita 1.5+, WebKitGTK 6.0
   (login window) and GIO/gvfs (MTP). Optional: `7z` (7-Zip or p7zip; setup needs it only for
   a Garmin Express installer older than version 8), `mutagen` (music tags), `libusb-1.0`
-  (Connect IQ apps on devices that hide their app folder, and their hidden crash logs;
-  usually installed), libshumate 1.1+ (the map on the page of an activity; without
+  (a direct USB connection: Connect IQ apps and updates in folders hidden from the file
+  manager, satellite data, hidden crash logs, a car navigator's `.System`; usually installed),
+  libshumate 1.1+ (the map on the page of an activity; without
   libshumate the page says so and has no map, and with an older one the track has no
   streets under it). GNU gettext (`msgfmt`)
   builds the translations, which are not kept compiled in the repository; without it
@@ -65,6 +66,13 @@ banner at the top and **Sign In**.
 They are separate installations. Each keeps its own setup (the key from the Garmin Express
 installer), login, settings and sync state: its own last syncs, uploaded files and list of your
 own maps.
+
+Both can be installed side by side. The version from source has an ID of its own: its menu
+entry is **openExpress (source)**, its window opens beside the Flatpak's, and turning background
+sync off in one does not stop the other's. An older version from source wrote its menu entry
+under the Flatpak's ID, where it hid the Flatpak's; when the version from source starts, and in
+`openexpress install-desktop`, it removes what it left there (only a menu entry that runs it and
+the program's own icons, never one that runs the Flatpak) and writes its own entry at once.
 
 - After switching from one to the other, choose the installer and sign in again.
 - The first sync of each device then starts anew in the Flatpak: the window asks whether to mark

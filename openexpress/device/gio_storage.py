@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import codecs
 import contextlib
+import dataclasses
+import functools
 import logging
 import os
 import re
@@ -29,7 +31,7 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import applog  # noqa: E402
-from openexpress.device import ptp  # noqa: E402
+from openexpress.device import ptp, session_mark  # noqa: E402
 from openexpress.device.found import (  # noqa: E402, F401 - found without GIO, re-exported
     ABSENT,
     DRIVE_OFF,
@@ -70,6 +72,7 @@ from openexpress.device.found import (  # noqa: E402, F401 - found without GIO, 
 from openexpress.device.found import probe as found_probe  # noqa: E402
 from openexpress.device.storage import (  # noqa: E402
     CopyNotStarted,
+    DeviceBusy,
     DeviceError,
     DeviceNotResponding,
     Entry,
@@ -96,7 +99,27 @@ _ATTRS = "standard::name,standard::type,standard::size,time::modified"
 
 
 def _err(e: GLib.Error, what: str) -> DeviceError:
-    return DeviceError(f"{what}: {e.message}")
+    """What a failure of gvfs is, in its words after `what`: DeviceBusy for a refusal as busy
+    (an unmount while an operation on the device is under way), else DeviceError."""
+    busy = e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.BUSY)
+    return (DeviceBusy if busy else DeviceError)(f"{what}: {e.message}")
+
+
+def _refused(e: GLib.Error, what: str) -> DeviceError:
+    """A new folder or a copy that failed: gvfs passes on a refusal of the device as a plain
+    failure, in libmtp's words ("Could not send object info"), which do not say that the
+    device refused it; said after them. Any other answer as _err says it."""
+    if not e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.FAILED):
+        return _err(e, what)
+    # TRANSLATORS: after the words of a write or a new folder that failed on the device (e.g.
+    # "Cannot write GARMIN/x.fit: Could not send object info.")
+    said = _("The device refused it; a device report helps find out why.")
+    return DeviceError(f"{what}: {e.message.rstrip('.')}. {said}")
+
+
+def _os_said(what: str, e: OSError) -> str:
+    """`what` with the system's words for `e` (applog.system_words), else its own."""
+    return f"{what}: {applog.system_words(e) or e}"
 
 
 def _host_visible(path: Path) -> bool:
@@ -137,7 +160,7 @@ def _temporary_file(what: str, keep_open: bool):
             if not keep_open:
                 os.close(fd)
         except OSError as e:
-            raise CopyNotStarted(f"{what}: {e}") from e
+            raise CopyNotStarted(_os_said(what, e)) from e
         try:
             yield (fd if keep_open else None), Path(tmp)
         finally:
@@ -205,14 +228,87 @@ def _timed_out(what: str) -> DeviceError:
         seconds=HOST_COPY_TIMEOUT_S))
 
 
+HOST_PULL_LOOK_S = 1.0  # how often a copy from the device in the Flatpak is looked at for growth
+# Why this PyGObject cannot copy from the device with progress (Gio.File.copy_async with its two
+# callbacks), once found: every later large read of this process is a stream, said once.
+_copy_unavailable: str | None = None
+END_WAIT_S = 5.0  # for a command on the host to end once told to
+
+
+def _end(proc: subprocess.Popen) -> None:
+    """Ends a command run on the host: flatpak-spawn passes the signal on to it; killed when it
+    does not end in END_WAIT_S."""
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(END_WAIT_S)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        with suppress(subprocess.TimeoutExpired):
+            proc.wait(END_WAIT_S)
+
+
+def _has_bytes(path: Path) -> bool:
+    """Whether a copy put anything into `path` yet."""
+    try:
+        return path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _flatpak_spawn_needed(what: str) -> None:
+    """CopyNotStarted with `what` without flatpak-spawn, through which the host's gio copies."""
+    if not shutil.which("flatpak-spawn"):
+        raise CopyNotStarted(f"{what}: " + _("flatpak-spawn is not available"))
+
+
+def _host_gio_copy(command: list[str],
+                   what: str) -> tuple[subprocess.Popen, list[bytes], threading.Thread]:
+    """The host's `gio copy -p` started (`command`), its error output read meanwhile by a thread
+    of its own, so that a lot of it cannot block the copy. Gives the process, the list the
+    thread puts that output in (whole once the thread has ended) and the thread. A command that
+    cannot be started: CopyNotStarted with `what`."""
+    try:
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as e:  # the command could not be started: its name said
+        raise CopyNotStarted(f"{what}: {e}") from e
+    errors: list[bytes] = []
+    reader = threading.Thread(target=lambda: errors.append(proc.stderr.read()), daemon=True)
+    reader.start()
+    return proc, errors, reader
+
+
+def _copy_updates(proc: subprocess.Popen, on_fraction: Callable[[float], None]) -> str:
+    """What `gio copy -p` prints, read as it comes until the command ends: `on_fraction` with
+    how far the copy is (copy_fraction) for each update that tells it. Gives all it printed."""
+    said, pending = [], ""
+    decode = codecs.getincrementaldecoder("utf-8")("replace")
+    while True:
+        data = os.read(proc.stdout.fileno(), 65536)
+        if not data:
+            break
+        text = decode.decode(data)
+        said.append(text)
+        # Updates begin with a carriage return and are cut anywhere by the pipe: the newest one
+        # is read as far as it has come, and again when the rest arrives.
+        *complete, pending = re.split(r"[\r\n]", pending + text)
+        # An update that cannot be read only goes without its progress: the result of the copy
+        # depends on the exit code alone.
+        for update in (*complete, pending):
+            fraction = copy_fraction(update)
+            if fraction is not None:
+                on_fraction(fraction)
+    return "".join(said)
+
+
 def host_copy(local: Path, target_uri: str, what: str, progress=None, started=None) -> None:
     """Copies a local file to the watch with the host's `gio copy`, as gvfs refuses local files
     from sandboxed (Flatpak) apps and gvfs-mtp has no other way of writing (needs
     --talk-name=org.freedesktop.Flatpak). `progress(done, total)` adds `-p`; `started()` is
     called for each update of progress read. Raises CopyNotStarted when the command cannot
     start, DeviceError when the copy fails or times out."""
-    if not shutil.which("flatpak-spawn"):
-        raise CopyNotStarted(f"{what}: " + _("flatpak-spawn is not available"))
+    _flatpak_spawn_needed(what)
     command = host_command("gio", "copy")
     # The whole path, as _host_visible saw it: one given as typed ("-x.mp3", "Name: x.mp3")
     # would be an option or an address to the host's gio.
@@ -226,7 +322,7 @@ def host_copy(local: Path, target_uri: str, what: str, progress=None, started=No
             res = subprocess.run([*command, source, target_uri],
                                  capture_output=True, text=True, timeout=HOST_COPY_TIMEOUT_S,
                                  check=False)
-        except OSError as e:  # the command could not be started
+        except OSError as e:  # the command could not be started: its name said
             raise CopyNotStarted(f"{what}: {e}") from e
         except subprocess.TimeoutExpired as e:
             raise _timed_out(what) from e
@@ -235,38 +331,25 @@ def host_copy(local: Path, target_uri: str, what: str, progress=None, started=No
         return
     try:
         size = Path(local).stat().st_size
-        proc = subprocess.Popen([*command, "-p", source, target_uri],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except OSError as e:  # the command could not be started
+    except OSError as e:
         raise CopyNotStarted(f"{what}: {e}") from e
-    errors: list[bytes] = []
-    reader = threading.Thread(target=lambda: errors.append(proc.stderr.read()), daemon=True)
-    reader.start()  # so that a lot of error output cannot block the copy
+    proc, errors, reader = _host_gio_copy([*command, "-p", source, target_uri], what)
     timed_out = threading.Event()
     watchdog = threading.Timer(HOST_COPY_TIMEOUT_S, lambda: (timed_out.set(), proc.kill()))
     watchdog.daemon = True
     watchdog.start()
-    shown, said, pending = 0.0, [], ""
-    decode = codecs.getincrementaldecoder("utf-8")("replace")
+    shown = 0.0
+
+    def on_fraction(fraction: float) -> None:
+        nonlocal shown
+        if started is not None:
+            started()  # the evidence that the copy, so a write to the device, is under way
+        if fraction > shown:
+            shown = fraction
+            progress(int(fraction * size), size)
+
     try:
-        while True:
-            data = os.read(proc.stdout.fileno(), 65536)
-            if not data:
-                break
-            text = decode.decode(data)
-            said.append(text)
-            # Updates begin with a carriage return and are cut anywhere by the pipe: the
-            # newest one is read as far as it has come, and again when the rest arrives.
-            *complete, pending = re.split(r"[\r\n]", pending + text)
-            # An update that cannot be read only goes without `progress`: the result of the
-            # copy depends on the exit code alone.
-            for update in (*complete, pending):
-                fraction = copy_fraction(update)
-                if fraction is not None and started is not None:
-                    started()  # the evidence that the copy, so a write to the device, is under way
-                if fraction is not None and fraction > shown:
-                    shown = fraction
-                    progress(int(fraction * size), size)
+        said = _copy_updates(proc, on_fraction)
         code = proc.wait()
     except OSError as e:
         proc.kill()
@@ -275,7 +358,7 @@ def host_copy(local: Path, target_uri: str, what: str, progress=None, started=No
         except subprocess.TimeoutExpired:
             log.warning("host copy: gio copy did not end 5 s after it was killed")
         reader.join(5)
-        raise DeviceError(f"{what}: {e}") from e
+        raise DeviceError(_os_said(what, e)) from e
     finally:
         watchdog.cancel()
     reader.join(5)
@@ -283,11 +366,23 @@ def host_copy(local: Path, target_uri: str, what: str, progress=None, started=No
         raise _timed_out(what)
     if code != 0:
         stderr = b"".join(errors).decode("utf-8", "replace")
-        raise DeviceError(f"{what}: {_detail(stderr, ''.join(said))}")
+        raise DeviceError(f"{what}: {_detail(stderr, said)}")
 
 
 # The size of a file that could not be told.
 _UNKNOWN = object()
+
+
+def _on_the_device(method):
+    """A GioStorage operation through gvfs, under way on the device for its whole time (the
+    file open for a read, the listing with its enumerator, the copy of a write): a session of
+    our own waits until it ends (_InUse)."""
+    @functools.wraps(method)
+    def held(self, *args, **kwargs):
+        with self._in_use():
+            return method(self, *args, **kwargs)
+
+    return held
 
 # A step of a read (one answer of gvfs: opening a listing or a file, a portion of the listing,
 # a chunk of the file, a query) with no answer this long: the device stopped responding.
@@ -342,6 +437,11 @@ class GioStorage(Storage):
     def _f(self, real: str) -> Gio.File:
         return self.root.resolve_relative_path(real) if real else self.root
 
+    def _in_use(self):
+        if not self.device_uri:
+            return contextlib.nullcontext()  # no session of our own can take it
+        return _in_use_of(self.device_uri).operation(self.usb)
+
     def _step(self, start, what: str, name: str, context=None) -> None:
         """One step of a read from the device, waited for (_wait) at most STALL_S: with no
         answer by then the device stopped responding (DeviceNotResponding, whatever its answer
@@ -351,14 +451,19 @@ class GioStorage(Storage):
         try:
             _wait(start, STALL_S, what, name, context=context, quiet=True)
         except GioTimedOut as e:
-            stalled = self._stalled_during(what)
-            note_stalled(self.usb)
-            self._log_stall(name, started)
-            raise stalled from e
+            raise self._stall(what, name, started) from e
         except Exception:
             self._answered_now(name, started)  # a refusal is an answer too
             raise
         self._answered_now(name, started)
+
+    def _stall(self, what: str, name: str, started: float) -> DeviceNotResponding:
+        """The device stopped responding during `what`: kept by the storage, noted for its
+        place on USB and in the log; the error to raise."""
+        stalled = self._stalled_during(what)
+        note_stalled(self.usb)
+        self._log_stall(name, started)
+        return stalled
 
     def _answered_now(self, name: str, started: float) -> None:
         self._answered = now = time.monotonic()
@@ -407,6 +512,7 @@ class GioStorage(Storage):
         except DeviceError:
             pass
 
+    @_on_the_device
     def _list(self, real_path: str) -> list[Entry]:
         # TRANSLATORS: error: the contents of a folder on the device cannot be read ({path}: the
         # folder)
@@ -431,6 +537,7 @@ class GioStorage(Storage):
         self._close(enum, what, "listing", context)
         return out
 
+    @_on_the_device
     def _query(self, real_path: str, attributes: str, flags):
         """The information of a file, None when it is not there."""
         target = self._f(real_path)
@@ -460,9 +567,14 @@ class GioStorage(Storage):
     def _read_start(self, real_path: str, count: int) -> bytes:
         return self._read_stream(real_path, count)
 
-    def _read_stream(self, real_path: str, count: int | None = None) -> bytes:
+    def _read_told(self, real_path: str, told) -> bytes:
+        return self._read_stream(real_path, told=told)
+
+    @_on_the_device
+    def _read_stream(self, real_path: str, count: int | None = None, told=None) -> bytes:
         """The file, or its first `count` bytes (fewer when it is shorter), read as a stream
-        in chunks of at most READ_CHUNK: gvfs fetches only what is asked for."""
+        in chunks of at most READ_CHUNK: gvfs fetches only what is asked for; the bytes read
+        so far told to `told(done, None)` after each chunk."""
         what = _("Cannot read {path}").format(path=real_path)
         context = _steps_context()  # one for all the steps of the read
         target = self._f(real_path)
@@ -482,6 +594,8 @@ class GioStorage(Storage):
                     break  # the end of the file
                 chunks.append(chunk)
                 got += len(chunk)
+                if told is not None:
+                    told(got, None)
         except DeviceNotResponding:
             raise  # not closed: that would wait on the same device
         except DeviceError:
@@ -490,6 +604,161 @@ class GioStorage(Storage):
         self._close(stream, what, "read", context)
         return b"".join(chunks)
 
+    def _copy_out(self, real_path: str, dest: Path, told=None) -> int:
+        entry = self.info(real_path)
+        return self.copy_to_local(real_path, dest, entry.size if entry else 0, told)
+
+    @_on_the_device
+    def copy_to_local(self, real_path: str, dest: Path, size: int, told=None) -> int:
+        """The file at this real path copied whole by one copy of gvfs into `dest` on this
+        computer, faster than a stream (whole_reads says why). From source Gio.File.copy; in the
+        Flatpak the host's gio copy (gvfs copies for a sandboxed app no faster than a stream).
+        `size`: the listed size, for the progress and the log. `told(done, total)` as the bytes
+        come; a `told` that raises stops the copy and its error passes on. No progress for
+        STALL_S: DeviceNotResponding, kept as for a read. Refused before its first byte:
+        CopyNotStarted (nothing to remove); any other failure: DeviceError. Whatever stopped it,
+        `dest` is removed. Returns the bytes copied."""
+        self._responding()
+        what = _("Cannot read {path}").format(path=real_path)
+        way = "the host's gio copy" if in_flatpak() else "Gio.File.copy"
+        started = time.monotonic()
+        done = False
+        try:
+            if in_flatpak():
+                self._host_pull(real_path, dest, size, what, told, started)
+            else:
+                self._gio_pull(real_path, dest, size, what, told, started)
+            copied = dest.stat().st_size
+            done = True
+        except DeviceNotResponding:
+            raise  # a stall stops what meets it
+        except OSError as e:
+            raise DeviceError(_os_said(what, e)) from e
+        finally:
+            if not done:
+                dest.unlink(missing_ok=True)
+        took = time.monotonic() - started
+        self._answered = time.monotonic()
+        log.info("device: a file copied whole by %s: %s in %.1f s, %.2f MB/s%s", way,
+                 applog.size(copied), took, copied / took / 1e6 if took > 0 else 0.0,
+                 "" if copied == size else f" (listed with {applog.size(size)})")
+        return copied
+
+    def _gio_pull(self, real_path: str, dest: Path, size: int, what: str, told,
+                  started: float) -> None:
+        """copy_to_local from source: Gio.File.copy_async, waited for with its time limit
+        renewed by each progress. A PyGObject that cannot give it its two callbacks (an older
+        one): CopyNotStarted, marked `said`, the reason in the log once a process."""
+        if _copy_unavailable is not None:
+            refused = CopyNotStarted(f"{what}: {_copy_unavailable}")
+            refused.said = True
+            raise refused
+        source, target = self._f(real_path), Gio.File.new_for_path(str(dest))
+        state: dict = {"done": 0, "error": None}
+
+        def start(done, cancellable, alive):
+            def progress(current, total, *_rest):
+                if current <= state["done"]:
+                    return
+                state["done"] = current
+                alive()
+                if told is not None and state["error"] is None:
+                    try:
+                        told(current, total or size)
+                    except BaseException as e:  # noqa: BLE001 - raised after the copy stops
+                        state["error"] = e
+                        cancellable.cancel()
+
+            try:
+                source.copy_async(target, Gio.FileCopyFlags.OVERWRITE, GLib.PRIORITY_DEFAULT,
+                                  cancellable, progress,
+                                  lambda f, res: done(lambda: f.copy_finish(res)))
+            except TypeError as e:  # a PyGObject without the copy's two callbacks
+                global _copy_unavailable
+                _copy_unavailable = str(e)
+                log.info("device: this PyGObject cannot copy a file with its progress (%s); "
+                         "large files are read as a stream", e)
+                refused = CopyNotStarted(f"{what}: {e}")
+                refused.said = True
+                raise refused from e
+
+        try:
+            _wait(start, STALL_S, what, "copy", quiet=True, renewable=True)
+        except GioTimedOut as e:
+            raise self._stall(what, "copy", started) from e
+        except DeviceNotResponding:
+            raise
+        except DeviceError as e:
+            if state["error"] is not None:
+                raise state["error"] from None
+            if not state["done"] and not _has_bytes(dest) and not isinstance(e, CopyNotStarted):
+                raise CopyNotStarted(str(e)) from e
+            raise
+        if state["error"] is not None:
+            raise state["error"]
+
+    def _host_pull(self, real_path: str, dest: Path, size: int, what: str, told,
+                   started: float) -> None:
+        """copy_to_local in the Flatpak: the host's gio copy (flatpak-spawn --watch-bus), into
+        a folder the host sees under the same path. The bytes so far from what gio copy -p
+        prints and from the size of `dest`; neither growing for STALL_S is a stall. A stall, a
+        `told` that raises, or an error ends the command (flatpak-spawn passes it on, and
+        --watch-bus ends the copy on the host when flatpak-spawn ends)."""
+        if not _host_visible(dest.parent):
+            # The reason before the path: the log's filter takes all after a path for it.
+            raise CopyNotStarted(f"{what}: the host does not see {dest.parent}")
+        _flatpak_spawn_needed(what)
+        command = host_command("gio", "copy", "-p", self._f(real_path).get_uri(),
+                               str(dest.resolve()), watch_bus=True)
+        proc, errors, reader = _host_gio_copy(command, what)
+        state = {"last": time.monotonic(), "done": 0, "seen": -1, "stalled": False}
+        watching = threading.Event()
+
+        def watch():
+            while not watching.wait(HOST_PULL_LOOK_S):
+                with suppress(OSError):
+                    now = dest.stat().st_size
+                    if now > state["seen"]:
+                        state["seen"], state["last"] = now, time.monotonic()
+                if time.monotonic() - state["last"] > STALL_S:
+                    state["stalled"] = True
+                    _end(proc)
+                    return
+
+        watcher = threading.Thread(target=watch, daemon=True)
+        watcher.start()
+        failure: BaseException | None = None
+        said = ""
+
+        def on_fraction(fraction: float) -> None:
+            if int(fraction * size) <= state["done"]:
+                return
+            state["done"], state["last"] = int(fraction * size), time.monotonic()
+            if told is not None:
+                told(state["done"], size)
+
+        try:
+            said = _copy_updates(proc, on_fraction)
+        except BaseException as e:  # noqa: BLE001 - raised after the copy ends: a `told` that
+            # raised (the window closed), Ctrl+C
+            failure = e
+            _end(proc)
+        finally:
+            watching.set()
+            watcher.join(HOST_PULL_LOOK_S + 1)
+            code = proc.wait()
+            reader.join(5)
+        if failure is not None:
+            raise failure
+        if state["stalled"]:
+            raise self._stall(what, "copy", started)
+        if code != 0:
+            detail = _detail(b"".join(errors).decode("utf-8", "replace"), said)
+            if not state["done"] and not _has_bytes(dest):
+                raise CopyNotStarted(f"{what}: {detail}")
+            raise DeviceError(f"{what}: {detail}")
+
+    @_on_the_device
     def _write(self, real_path: str, data: bytes) -> None:
         """gvfs-mtp cannot write streams, only copy a whole local file: the bytes go to a
         temporary file, copied as any file is (_write_file, so that what a copy cut short
@@ -501,9 +770,10 @@ class GioStorage(Storage):
                 with os.fdopen(fd, "wb") as f:
                     f.write(data)
             except OSError as e:
-                raise CopyNotStarted(f"{what}: {e}") from e
+                raise CopyNotStarted(_os_said(what, e)) from e
             self._write_file(real_path, tmp)
 
+    @_on_the_device
     def _write_file(self, real_path: str, local, progress=None) -> None:
         """Everything that can fail before the device is touched (the file to send, its
         staging in the Flatpak, starting the copy) raises CopyNotStarted: the old file stays.
@@ -514,7 +784,7 @@ class GioStorage(Storage):
         try:
             local.stat()
         except OSError as e:
-            raise CopyNotStarted(f"{what}: {e}") from e
+            raise CopyNotStarted(_os_said(what, e)) from e
         # What the target is before the copy: the evidence _discard_partial goes by.
         self._attempts[real_path] = _Attempt(self._size_now(real_path))
         try:
@@ -532,7 +802,7 @@ class GioStorage(Storage):
                 try:
                     shutil.copyfile(local, tmp)
                 except OSError as e:
-                    raise CopyNotStarted(f"{what}: {e}") from e
+                    raise CopyNotStarted(_os_said(what, e)) from e
                 self._copy_local(tmp, real_path, progress, what)
             return
         self._copy_local(local, real_path, progress, what)
@@ -549,6 +819,7 @@ class GioStorage(Storage):
             return _UNKNOWN
         return None if info is None else info.get_size()
 
+    @_on_the_device
     def _discard_partial(self, real_path: str) -> None:
         """After a copy that failed once it ran, deletes the file under the name only on
         evidence that the copy touched it: gio copy reported progress, or a file is there now
@@ -594,8 +865,9 @@ class GioStorage(Storage):
             Gio.File.new_for_path(str(local)).copy(target, Gio.FileCopyFlags.OVERWRITE,
                                                    None, cb, None)
         except GLib.Error as e:
-            raise _err(e, what) from e
+            raise _refused(e, what) from e
 
+    @_on_the_device
     def _delete(self, real_path: str) -> None:
         self._responding()
         try:
@@ -604,13 +876,15 @@ class GioStorage(Storage):
             # TRANSLATORS: error: a file on the device cannot be deleted ({path}: the file)
             raise _err(e, _("Cannot delete {path}").format(path=real_path)) from e
 
+    @_on_the_device
     def _mkdir(self, real_path: str) -> None:
         self._responding()
         try:
             self._f(real_path).make_directory(None)
         except GLib.Error as e:
-            raise _err(e, _("Cannot create directory {path}").format(path=real_path)) from e
+            raise _refused(e, _("Cannot create the folder {path}").format(path=real_path)) from e
 
+    @_on_the_device
     def _fs_attr(self, attr: str) -> int | None:
         found: list = []
         try:
@@ -640,6 +914,13 @@ class GioStorage(Storage):
     def exclusive_ptp(self):
         self._responding()  # the device would have to be unmounted from gvfs first
         usb = self.usb
+        if usb_place(usb) is None and self.device_uri:
+            # Opened while it was starting, before its place on USB could be read.
+            found = place_from_sysfs(usb)
+            if found is not None:
+                log.info("PTP: the device's place on USB read now (it was not known when it "
+                         "was opened)")
+                self.usb = usb = found
         if usb_place(usb) is None or not self.device_uri:
             return None
         # A Flatpak reaches the device only through its node, which it has with the
@@ -649,7 +930,13 @@ class GioStorage(Storage):
             return None
         try:
             ptp.load_libusb()
-        except ptp.UsbUnavailable:
+        except ptp.UsbUnavailable as e:
+            # Said once: a folder the device hides is then refused the ordinary way, and the
+            # log names the reason.
+            global _no_libusb_said
+            if not _no_libusb_said:
+                _no_libusb_said = True
+                log.info("PTP: no session of its own: %s", e)
             return None
         return _exclusive(self, node)
 
@@ -660,7 +947,7 @@ class GioStorage(Storage):
             return False
         say_to(progress)(refreshing_text())
         try:
-            with _unmounted(self, "refresh", "device mounted again"):
+            with _unmounted(self, "refresh", "device mounted again", "the refresh"):
                 pass
         except (RemountFailed, DeviceNotResponding):
             raise  # the callers say to unplug the device and plug it in again
@@ -791,7 +1078,6 @@ def _identify(uri: str | None, volume, monitor=None) -> GarminUsb | None:
         node = _UNIX_DEVICE.fullmatch(device or "")
         place = (int(node.group(1)), int(node.group(2))) if node else None
     # An address of the older form mtp://[usb:BBB,DDD]/ carries the numbers itself.
-    # That branch is covered by tests only: it was not tried on a device.
     ids = _sysfs_ids(*place) if place else None
     if ids is not None:
         if ids[0] != GARMIN_VID:
@@ -885,6 +1171,28 @@ def _still_stalled(usb: GarminUsb | None) -> bool:
 def _stalled_keys() -> set[tuple[int, int]]:
     with _stalled_lock:
         return set(_stalled_at)
+
+
+def place_from_sysfs(usb: GarminUsb | None) -> GarminUsb | None:
+    """A Garmin device opened before its place on USB could be read (it was still starting):
+    `usb` with that place from /sys, when exactly one Garmin USB device of its product (its
+    product not known: exactly one Garmin USB device) is there; None otherwise, and for one
+    whose place is known. Only the IDs and numbers are read, never its serial number."""
+    if usb is None or usb_place(usb) is not None:
+        return None
+    places = set()
+    for record in _usb_records():
+        try:
+            if record.vendor() != GARMIN_VID or (
+                    usb.product is not None and record.product() != usb.product.lower()):
+                continue
+            places.add((record.busnum(), record.devnum()))
+        except (OSError, ValueError):
+            continue
+    if len(places) != 1:
+        return None
+    ((bus, address),) = places
+    return dataclasses.replace(usb, bus=bus, address=address)
 
 
 def _sysfs_place(record: _UsbRecord) -> tuple[int, int] | None:
@@ -998,6 +1306,7 @@ def drives_on_usb() -> frozenset[UsbAddress]:
 # For testing only: the mounted USB drive named in TEST_DRIVE_ENV is taken for a Garmin drive
 # too (found.named_for_testing).
 _test_drive_said: set[str] = set()  # the warnings about it already in the log
+_no_libusb_said = False  # whether the log said why libusb could not be loaded (once)
 
 
 def _named_for_testing(vendor: str, product: str) -> bool:
@@ -1226,10 +1535,9 @@ def open_ums_storage(dev: FoundDevice) -> UmsStorage:
     return st
 
 
-# When this process mounted a device (by its address, _key), or first found it mounted, for the
-# log of a stall: a mount this process did not make may be older than the process, and gvfs-mtp
-# asks a mounted device something only every 900 s.
-# When a device was mounted, by its address and its place on USB (None: not known): unplugged
+# When this process mounted a device, or first found it mounted, for the log of a stall: a mount
+# this process did not make may be older than the process, and gvfs-mtp asks a mounted device
+# something only every 900 s. By its address and its place on USB (None: not known): unplugged
 # and plugged in again, a device has the same address of gvfs but a new device number.
 _mounted_here: dict[tuple, float] = {}
 _found_mounted: dict[tuple, float] = {}
@@ -2025,12 +2333,15 @@ def _mtp_storage(uri: str, usb: GarminUsb | None) -> GioStorage:
         st.usb = usb
     named = list(zip(candidates, storages))
     for name, st in named:
+        st.description = name  # gvfs names each storage's folder as the device names it
+    for name, st in named:
         if st.exists("GARMIN/GarminDevice.xml"):
             st.device_uri = uri
             # A device with more than one top-level storage (e.g. a Forerunner 645 Music's
             # small Primary, beside its Media one): music.py refuses to create its folder on
             # the wrong one.
             st.other_storages = tuple(n for n, s in named if s is not st)
+            st.others = tuple(s for _n, s in named if s is not st)  # a memory card among them
             log.info("device: %d storage%s: %s; GARMIN on %s", len(named),
                      "" if len(named) == 1 else "s", ", ".join(candidates), name)
             return st
@@ -2076,6 +2387,163 @@ def _key(uri: str) -> str:
     return uri.rstrip("/").lower()
 
 
+# Before a session of our own unmounts the device, this process's own operations on it through
+# gvfs (a read, a listing, a copy, a deletion) end first, at most this long: with one still under
+# way after it (a large file read or written) the session is not had (DeviceBusy) and nothing is
+# cut short. gvfs itself refuses an unmount while an operation on the device is under way (a read
+# or a write), not while a file is only held open: on a fēnix 8 a file held open and not read did
+# not stop the unmount, a read going on did, at two tries in a row. Waiting here, the session
+# does not meet that refusal for this process's own operations, which may last longer than the
+# tries below.
+OWN_USE_WAIT_S = 10.0
+# gvfs refuses an unmount as busy while another program (another openExpress) reads or writes
+# the device: asked this many times in all, this far apart.
+UNMOUNT_TRIES = 5
+UNMOUNT_BUSY_PAUSE_S = 0.5
+# An operation of a worker thread that meets a session of our own waits for the device to be
+# mounted again at most this long: as long as a step may take before the device counts as
+# stopped (STALL_S). That is more than the session's wait for the operations under way, its
+# tries and a session that reads folders, crash logs or satellite data, with the mount after
+# it (a second or two); after a longer one (a map written in a session) the operation goes on
+# and fails as it would without the wait. An unplug and the window's closing end the wait at
+# once; it looks for the unplug this often.
+MOUNT_WAIT_S = 30.0
+UNPLUG_POLL_S = 0.25
+
+
+class _InUse:
+    """Who uses one device through gvfs in this process: the operations under way, per thread
+    (one within another counts once), and the thread that has the device for a session of our
+    own (_unmounted).
+
+    A session waits until the operations of the other threads end (OWN_USE_WAIT_S, else
+    DeviceBusy). While it waits or runs, a new operation of another worker thread waits for the
+    device to be mounted again (MOUNT_WAIT_S; an unplug or the window's closing, stop_waiting,
+    end the wait at once), then goes on whatever it finds. The main thread (the window's loop,
+    the command line) and the session's own thread never wait: what they ask goes on at once,
+    as it would without a session."""
+
+    def __init__(self) -> None:
+        self.changed = threading.Condition()
+        self.users: dict[int, int] = {}  # thread -> operations under way in it
+        self.session: int | None = None  # the thread that has the device for a session
+        self.depth = 0  # sessions within that thread's session
+        self.wanted = 0  # sessions waiting for the operations under way
+        self.waits_said = False  # once a session: an operation waits for it
+
+    @contextmanager
+    def operation(self, usb: GarminUsb | None):
+        me = threading.get_ident()
+        with self.changed:
+            if (me not in self.users and me != self.session
+                    and threading.current_thread() is not threading.main_thread()):
+                self._wait_for_the_mount(usb)
+            self.users[me] = self.users.get(me, 0) + 1
+        try:
+            yield
+        finally:
+            with self.changed:
+                if self.users[me] == 1:
+                    del self.users[me]
+                else:
+                    self.users[me] -= 1
+                self.changed.notify_all()
+
+    def _wait_for_the_mount(self, usb: GarminUsb | None) -> None:
+        """With `changed` held: until no session is wanted or held, at most MOUNT_WAIT_S."""
+        if self.session is None and not self.wanted:
+            return
+        if not self.waits_said:
+            self.waits_said = True
+            log.info("gio: an operation on the device waits until openExpress's own session "
+                     "ends")
+        started = time.monotonic()
+        while self.session is not None or self.wanted:
+            if _stop_waiting.is_set():
+                log.info("gio: the window closes, an operation on the device waits no more")
+                return
+            if usb_place(usb) is not None and not usb_still_there(usb):
+                log.info("gio: the device was unplugged while an operation waited for it")
+                return
+            left = MOUNT_WAIT_S - (time.monotonic() - started)
+            if left <= 0:
+                log.info("gio: an operation waited %g s for the device to be mounted again; it "
+                         "goes on", MOUNT_WAIT_S)
+                return
+            self.changed.wait(min(left, UNPLUG_POLL_S))
+
+    @contextmanager
+    def taken(self, what: str):
+        """The device for a session of the thread that asks: once the operations of the other
+        threads (and another session) have ended; DeviceBusy when they still run after
+        OWN_USE_WAIT_S, the device untouched. `what` begins the lines of the log."""
+        me = threading.get_ident()
+        with self.changed:
+            if self.session == me:
+                self.depth += 1
+            else:
+                self._wait_until_free(me, what)
+                self.session, self.depth, self.waits_said = me, 1, False
+        try:
+            yield
+        finally:
+            with self.changed:
+                self.depth -= 1
+                if not self.depth:
+                    self.session = None
+                self.changed.notify_all()
+
+    def _others(self, me: int) -> int:
+        """The operations under way in the other threads (one within another counts once),
+        and another thread's session."""
+        return (sum(1 for thread in self.users if thread != me)
+                + (self.session not in (None, me)))
+
+    def _wait_until_free(self, me: int, what: str) -> None:
+        """With `changed` held."""
+        if not self._others(me):
+            return
+        self.wanted += 1
+        started = time.monotonic()
+        try:
+            log.info("%s: waits until %d operation(s) of openExpress on the device end", what,
+                     self._others(me))
+            while self._others(me):
+                left = OWN_USE_WAIT_S - (time.monotonic() - started)
+                if left <= 0:
+                    log.info("%s: %d operation(s) of openExpress on the device still under way "
+                             "after %g s; the device is not unmounted", what, self._others(me),
+                             OWN_USE_WAIT_S)
+                    raise DeviceBusy(busy_text())
+                self.changed.wait(left)
+            log.info("%s: they ended after %.1f s", what, time.monotonic() - started)
+        finally:
+            self.wanted -= 1
+            self.changed.notify_all()
+
+
+_in_use_by_device: dict[str, _InUse] = {}
+_in_use_lock = threading.Lock()
+_stop_waiting = threading.Event()
+
+
+def _in_use_of(uri: str) -> _InUse:
+    """The one _InUse of the device at `uri`, whichever storage of it asks."""
+    with _in_use_lock:
+        return _in_use_by_device.setdefault(_key(uri), _InUse())
+
+
+def stop_waiting() -> None:
+    """The window closes: an operation that waits for a session of our own goes on at once
+    (and meets the device as it is, as it would without the wait)."""
+    _stop_waiting.set()
+    with _in_use_lock:
+        every = list(_in_use_by_device.values())
+    for in_use in every:
+        with in_use.changed:
+            in_use.changed.notify_all()
+
+
 def _mount_of(uri: str):
     """The mount the volume monitor shows whose root is at `uri` (_key: any letter case, with
     or without the final "/"); None when there is none. A mount without a root is passed
@@ -2096,12 +2564,13 @@ def usb_node(usb: GarminUsb | None) -> Path | None:
 
 def own_remount(mount) -> bool:
     """Whether this mount appearing or disappearing is our own doing: during our PTP session
-    and a moment after it, while the device is still at its place on USB."""
+    and a moment after it, while the device is still at its place on USB; or the doing of
+    another openExpress process of this computer, which marks its sessions (session_mark)."""
     root = mount.get_root()
     key = _key(root.get_uri()) if root is not None else None
     until = _quiet_until.get(key) if key is not None else None
     if until is None or time.monotonic() >= until:
-        return False
+        return _marked_by_another(mount)
     usb = _quiet_usb.get(key)
     if usb is None or usb_still_there(usb):
         return True
@@ -2111,6 +2580,21 @@ def own_remount(mount) -> bool:
     _quiet_until.pop(key, None)
     _quiet_usb.pop(key, None)
     return False
+
+
+def _marked_by_another(mount) -> bool:
+    """Whether another openExpress process (the background watcher, the other install's window)
+    has this device unmounted for a session of its own, or did a moment ago, and the device is
+    still at that place on USB. The device is asked where it is only when a mark is there."""
+    if not session_mark.any_marked():
+        return False
+    usb = garmin_usb(mount)
+    place = usb_place(usb)
+    if place is None or not session_mark.active(place) or not usb_still_there(usb):
+        return False
+    log.info("device: mount at %d-%d left alone: a session of another openExpress process",
+             *place)
+    return True
 
 
 # --- one asynchronous Gio operation, waited for ------------------------------------------
@@ -2145,14 +2629,16 @@ def _ms(seconds: float) -> int:
 
 
 def _wait(start, timeout_s: float, what: str, name: str = "operation", context=None,
-          quiet: bool = False) -> None:
+          quiet: bool = False, renewable: bool = False) -> None:
     """Run one asynchronous Gio operation to its end: in a worker thread on a main context of
     its own (or `context`, shared by the steps of one listing or of one file read:
     _steps_context), in the main thread on the global default one. `start(done,
     cancellable)` begins it; `done(finish)` gets a function that raises GLib.Error on failure.
     Raises DeviceError when it fails, GioTimedOut when cancelled at `timeout_s` and not done
     within CANCEL_WAIT_S. `quiet` (the many steps of reads): no DEBUG line for an answer in
-    time, and a stall at the time limit is information (the storage warns of it)."""
+    time, and a stall at the time limit is information (the storage warns of it).
+    `renewable` (a copy, which answers once at its end): `start(done, cancellable, alive)`,
+    and each call of `alive()` (its progress, in the same context) gives it `timeout_s` anew."""
     # Gio gives the answer in the main context that was the default of the thread when the
     # operation began. A worker thread's own context, pushed for the wait, needs nothing of
     # the main thread for the answer and the time limit (the window holds the global default
@@ -2189,14 +2675,26 @@ def _wait(start, timeout_s: float, what: str, name: str = "operation", context=N
             grace.attach(context)
         return False
 
-    timer = GLib.timeout_source_new(_ms(timeout_s))
-    timer.set_callback(lambda *_a: at_the_limit())
-    sources.append(timer)
+    def new_timer():
+        timer = GLib.timeout_source_new(_ms(timeout_s))
+        timer.set_callback(lambda *_a: at_the_limit())
+        sources.append(timer)
+        timer.attach(context)
+
+    def alive():
+        if cancelled or answers:
+            return  # past its limit, or done: nothing to renew
+        sources.pop().destroy()  # the timer of the limit, the last source while it runs
+        new_timer()
+
     if own:
         context.push_thread_default()
     try:
-        timer.attach(context)
-        start(done, cancellable)
+        new_timer()
+        if renewable:
+            start(done, cancellable, alive)
+        else:
+            start(done, cancellable)
         if not answers:  # an answer given within start() needs no loop
             loop.run()
     except BaseException:
@@ -2245,6 +2743,36 @@ def _unmount(uri: str) -> None:
         Gio.MountUnmountFlags.NONE, None, cancellable,
         lambda m, res: done(lambda: m.unmount_with_operation_finish(res))),
         UNMOUNT_TIMEOUT_S, _("Cannot unmount the device"), "unmount")
+
+
+def busy_text() -> str:
+    """The error of a session not had because another operation on the device is under way:
+    in another program or another task of this one. What gvfs said stays in its cause."""
+    # TRANSLATORS: an error: openExpress could not open a direct USB connection to the device,
+    # because another operation on it was under way (in the file manager or another program,
+    # another openExpress window or command, or another task of this one); nothing was changed
+    # on the device. Said alone or after the name and version of an update that was not
+    # installed ("{name} {version}: ")
+    return _("The device is busy with another operation, such as a copy in the file manager or "
+             "another task of openExpress. Try again when it ends.")
+
+
+def _unmount_when_free(uri: str, what: str) -> None:
+    """_unmount, asked again while gvfs refuses it as busy: UNMOUNT_TRIES times in all,
+    UNMOUNT_BUSY_PAUSE_S apart; then DeviceBusy with busy_text and the words of gvfs as its
+    cause, the device left mounted."""
+    for tried in range(1, UNMOUNT_TRIES + 1):
+        try:
+            _unmount(uri)
+            return
+        except DeviceBusy as e:
+            if tried == UNMOUNT_TRIES:
+                log.info("%s: gvfs said the device is busy %d times; not unmounted", what,
+                         tried)
+                raise DeviceBusy(busy_text()) from e
+            log.info("%s: gvfs says the device is busy, tried again in %.1f s (%d of %d)",
+                     what, UNMOUNT_BUSY_PAUSE_S, tried + 1, UNMOUNT_TRIES)
+            time.sleep(UNMOUNT_BUSY_PAUSE_S)
 
 
 def _mounted_again(location, res) -> None:
@@ -2358,20 +2886,37 @@ def _mount_back(uri: str, storage: Storage) -> None:
 
 
 @contextmanager
-def _unmounted(storage: Storage, what: str, closed: str):
+def _unmounted(storage: Storage, what: str, closed: str, whole: str):
     """The device of `storage` (its device_uri, and its usb with its place on USB) unmounted
     from gvfs for the block and mounted again after it, also after an error; our own unmount
     and mount are not taken for an unplug (own_remount) meanwhile and for REMOUNT_QUIET_S
-    after. Gives the time it started. `what` begins its lines of the log; `closed` is the last
-    one, said with the time once the device is mounted again."""
+    after, by this process and by the other openExpress processes (session_mark). Gives the
+    time it started. `what` begins its lines of the log; `closed` is the last one, said once
+    the device is mounted again with the time of the mount alone and, after
+    `whole` (what the block was), the time since the unmount began: that one covers the
+    unmount, the block and the mount, so it is not the time the mount took.
+
+    Before it, this process's own operations on the device end (_InUse; DeviceBusy when they
+    still run after OWN_USE_WAIT_S, nothing unmounted), and an unmount gvfs refuses as busy is
+    asked again (_unmount_when_free)."""
     uri = storage.device_uri
+    # This process's operations on the device end first.
+    with _in_use_of(uri).taken(what), _unmounted_now(uri, storage, what, closed,
+                                                       whole) as started:
+        yield started
+
+
+@contextmanager
+def _unmounted_now(uri: str, storage: Storage, what: str, closed: str, whole: str):
+    """_unmounted, once nothing else of this process uses the device."""
     _quiet_until[_key(uri)] = float("inf")
     _quiet_usb[_key(uri)] = storage.usb
+    mark = session_mark.begin(usb_place(storage.usb))  # for the other openExpress processes
     started = time.monotonic()
     try:
         log.info("%s: unmounting the device from gvfs", what)
         try:
-            _unmount(uri)
+            _unmount_when_free(uri, what)
         except (GioTimedOut, KeyboardInterrupt) as stopped:
             # Cancelled, gvfs may unmount it all the same, now or a moment later: seen as it
             # settles, mounted again if it is unmounted, so that it is not left without a
@@ -2386,18 +2931,23 @@ def _unmounted(storage: Storage, what: str, closed: str):
         try:
             yield started
         finally:
+            mounting = time.monotonic()
             _remount(uri, storage)
-            log.info("%s: %s after %.1f s", what, closed, time.monotonic() - started)
+            mounted = time.monotonic()
+            log.info("%s: %s in %.1f s (%s took %.1f s)", what, closed, mounted - mounting,
+                     whole, mounted - started)
     finally:
         # The signals of the last mount arrive a moment later.
         _quiet_until[_key(uri)] = time.monotonic() + REMOUNT_QUIET_S
+        mark.end(REMOUNT_QUIET_S)
 
 
 @contextmanager
 def _exclusive(storage: Storage, node: Path | None = None):
     """A PTP session to the device of `storage` while it is unmounted (_unmounted): opened
     through its `node` in /dev/bus/usb when given, else by its place on USB."""
-    with _unmounted(storage, "PTP", "session closed, device mounted again") as started:
+    with _unmounted(storage, "PTP", "session closed, device mounted again",
+                    "the session") as started:
         try:
             transport = (ptp.LibusbTransport.open_node(node) if node is not None
                          else ptp.LibusbTransport.open(storage.usb.bus, storage.usb.address))
@@ -2409,7 +2959,19 @@ def _exclusive(storage: Storage, node: Path | None = None):
                     log.info("PTP: the device lists the same operations as before")
                 else:
                     log.info("PTP: %s", operations)
-                yield session
+                try:
+                    yield session
+                finally:
+                    _say_other_folder(storage, session)
         except Exception as e:
             log.warning("PTP: session ended with %s: %s", type(e).__name__, e)
             raise
+
+
+def _say_other_folder(storage: Storage, session: ptp.Session) -> None:
+    """Once a connection: how many objects Garmin's listing named in another folder than the
+    one asked, left out of this session's listings (by their count, never their names)."""
+    if session.other_parent and not applog.unchanged("PTP other folder", connection(storage),
+                                                     True):
+        log.info("PTP: Garmin's listing named %d object(s) of another folder; left out",
+                 session.other_parent)

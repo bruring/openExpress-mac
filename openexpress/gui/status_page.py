@@ -513,8 +513,10 @@ def _collapsed(win) -> bool:
     return bool(split is not None and split.get_collapsed())
 
 
-def _event_row(event: status.Event, now: datetime) -> Adw.PreferencesRow:
-    when = relative_time(event.at, now)
+def _event_row(event: status.Event) -> Adw.PreferencesRow:
+    # A history: each row with its date and hour, so that the rows can be compared; the words
+    # of time ("2 days ago") stay above the list.
+    when = full_time(event.at)
     if event.kind == "crash":
         crash = event.crash
         parts = [when]
@@ -566,10 +568,9 @@ def render_history(win, view=None) -> None:
     for row in view.status_history_rows:
         g.remove(row)
     view.status_history_rows = []
-    now = datetime.now()
     shown = facts.events if view.status_show_all else facts.events[:status.SHOWN_EVENTS]
     more = len(shown) < len(facts.events)
-    added = [_event_row(event, now) for event in shown]
+    added = [_event_row(event) for event in shown]
     if not facts.errors_known:
         # TRANSLATORS: a row of "Crashes and Updates" when the device's error logs could not be
         # read
@@ -650,8 +651,7 @@ def _free_up_space(win, sec, facts: status.Facts) -> None:
         if plan is not None:
             button = win._button(_("Remove"), lambda button: confirm_dumps(win, plan, button),
                                  style="destructive-action", with_button=True)
-            button.set_tooltip_text(_dumps_answer(plan))
-            button.update_property([Gtk.AccessibleProperty.LABEL], [_dumps_answer(plan)])
+            _full_name(button, _dumps_answer(plan))
             row.add_suffix(button)
         g.add(row)
     for u in facts.not_installed:
@@ -687,8 +687,8 @@ def _dumps_answer(plan: freeing.DumpPlan) -> str:
 
 def _dumps_question(plan: freeing.DumpPlan) -> str:
     """The question before the older dumps are removed: how many, the space, which are copied
-    first and which are not (their copies would not fit within the limit); the newest
-    stays."""
+    first and which are not (their copies would not fit within the limit); the error logs stay,
+    what a dump without a copy cannot be any more, and the newest stays."""
     copied, without_copy, older = plan.copied, plan.without_copy, plan.older
     count, size = len(older), human_size(sum(s for _p, s, _t in older))
     limit = freeing.limit_words()
@@ -724,7 +724,15 @@ def _dumps_question(plan: freeing.DumpPlan) -> str:
                           "{count} ({size}) without a copy, as the copies would not fit in "
                           "{limit}", n).format(count=n, size=room, limit=limit)
         text = f"{head} {first}, {second}."
-    return f"{text} {_('The newest dump stays on the device.')}"
+    # TRANSLATORS: in the question before older memory dumps are removed: only the dumps go;
+    # the error logs, from which the crashes are counted, stay
+    said = [text, _("The error logs stay on the device: the crashes are still counted.")]
+    if without_copy:
+        # TRANSLATORS: in the question before older memory dumps are removed, when some of them
+        # are removed without a copy on this computer: nothing is left that could be sent to
+        # Garmin (e.g. its support) later
+        said.append(_("A dump removed without a copy cannot be sent to Garmin later."))
+    return " ".join([*said, _("The newest dump stays on the device.")])
 
 
 def _stopped_words(e: BaseException) -> str:
@@ -967,8 +975,7 @@ def _diagnostic_files(win, sec, facts: status.Facts, now: datetime,
         button = win._button(pgettext("open the folder of the copies", "Open"),
                              lambda: open_copies(win, unit))
         # TRANSLATORS: the full name of the button that opens the folder of the copies
-        button.set_tooltip_text(_("Open Folder"))
-        button.update_property([Gtk.AccessibleProperty.LABEL], [_("Open Folder")])
+        _full_name(button, _("Open Folder"))
         copies.add_suffix(button)
     g.add(copies)
     if not facts.connected:
@@ -1010,9 +1017,14 @@ def _copy_button(win, name: str, cb) -> Gtk.Button:
     # TRANSLATORS: a button of the rows "Crash Logs" and "Memory Dumps" on the page Device
     # Status: copies them to this computer (the row says what); short, for a narrow window
     button = win._button(pgettext("copy diagnostic files", "Copy"), cb, with_button=True)
+    _full_name(button, name)
+    return button
+
+
+def _full_name(button: Gtk.Button, name: str) -> None:
+    """The full `name` of a button of fewer words, in its tooltip and for screen readers."""
     button.set_tooltip_text(name)
     button.update_property([Gtk.AccessibleProperty.LABEL], [name])
-    return button
 
 
 def _dumps_at_last(facts: status.Facts) -> str:
@@ -1143,6 +1155,16 @@ def _empty_page(sec, facts: status.Facts) -> None:
         card.set_hexpand(True)
         holder.append(card)
         child = Adw.Clamp(maximum_size=520, valign=Gtk.Align.START, child=holder)
-    # TRANSLATORS: the page Device Status of a device that keeps no diagnostic data
-    sec.show_info(_("This device keeps no error logs or memory dumps that openExpress can read"),
-                  child)
+    # Files counted under Logs and Memory Dumps on its card (a Venu's event logs): said to be
+    # other diagnostic files, so that the sentence and the card do not seem to disagree.
+    if logs := facts.categories.get("logs"):
+        # TRANSLATORS: Device Status of a device without error logs or memory dumps openExpress
+        # reads, while the storage card counts some of its files under {category} (the name of
+        # that category on the card); {size}: e.g. 210.3 kB
+        text = _("This device keeps no error logs or memory dumps that openExpress can read. "
+                 "Its other diagnostic files ({size}) are counted under “{category}”.").format(
+            size=human_size(logs), category=kind_names()["logs"])
+    else:
+        # TRANSLATORS: the page Device Status of a device that keeps no diagnostic data
+        text = _("This device keeps no error logs or memory dumps that openExpress can read")
+    sec.show_info(text, child)

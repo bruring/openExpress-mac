@@ -7,8 +7,9 @@ row_subtitle), the free space of the device read again after a task that writes 
 (read_space, render_space, refresh_space), the bar at the bottom in the column of the pages
 (bottom_bar, page_column), the name of a task in the log (task_name), the
 collection of reference cycles after it (collect_garbage), an error nobody expected, in
-the log (log_unexpected), and the questions and messages of the window, which close as
-Cancel (confirm, Answer, inform).
+the log (log_unexpected), the questions and messages of the window, which close as
+Cancel (confirm, Answer, inform), one file of this computer chosen (choose_local_file), and
+a switch of a setting saved or put back with why (switch_saved, not_saved_text).
 
 Has: the task under way (busy, _waiting, _task_lets_close, _reporter) and the action buttons.
 """
@@ -21,15 +22,17 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402 - imports must follow gi.require_version
+from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import applog  # noqa: E402
+from openexpress.applog import error_text  # noqa: E402
 from openexpress.errors import OrdinaryStop, UserFacingError  # noqa: E402
 from openexpress.gui import stalled  # noqa: E402
 from openexpress.gui.gui_settings import MIN_WINDOW  # noqa: E402
@@ -37,6 +40,7 @@ from openexpress.gui.tasks import WindowClosed  # noqa: E402
 from openexpress.gui.words import space_text  # noqa: E402
 from openexpress.i18n import _, ngettext  # noqa: E402
 from openexpress.progress import Reporter, Step, TimedWait, Waiting  # noqa: E402
+from openexpress.settings import SetupError  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -195,14 +199,6 @@ def trash_button(tooltip: str, cb) -> Gtk.Button:
 # words of the task comes only when the task takes longer than this; a quick one (a fast
 # device) shows no text that flashes and is gone.
 TEXT_AFTER_MS = 500
-
-
-def error_text(e: Exception) -> str:
-    """What the window says of a failure: a message for the user (UserFacingError) as it is;
-    the words of an error nobody foresaw filtered as the log is (a path, an address, a unit
-    ID), as the command line tells them."""
-    text = str(e) or type(e).__name__
-    return text if isinstance(e, UserFacingError) else applog.redact(text)
 
 
 # Marks a button of wraps_when_folded, and a row or a group whose text such a button stands
@@ -461,6 +457,47 @@ def error_heading(failed_title: str | None) -> str:
     did not happen), else a general one; never the words of its progress ("Saving…")."""
     # TRANSLATORS: heading of an error of a task that has no heading of its own
     return failed_title or _("Something Went Wrong")
+
+
+def failed_text(e: BaseException) -> str:
+    """The words of the error dialog of a task: those of the error, and for a fault of
+    openExpress (applog.is_fault) how to report it."""
+    if not applog.is_fault(e):
+        return error_text(e)
+    # TRANSLATORS: under the words of an error nobody foresaw, in the window; {item}: the item
+    # of the main menu, "Report a Device or Problem…" in your language (put your language's
+    # quotation marks around it); "Attach the last log" is the check box of that dialog
+    note = _("This is a bug in openExpress. To report it, choose “{item}” in the main menu "
+             "and attach the last log.").format(item=_("Report a Device or Problem…"))
+    return f"{error_text(e)}\n\n{note}"
+
+
+def not_saved_text(e: Exception) -> str:
+    """Why a setting was not saved: the system's words for a file it could not write
+    (applog.system_words), else the words of applog.error_text."""
+    return applog.system_words(e) or error_text(e)
+
+
+def switch_saved(win, row, handler, saved: bool, save) -> bool:
+    """A switch of a setting turned (its handler `handler` of notify::active): `save(on)` with
+    what it shows now, unless that is `saved` already: the switch put back after a change that
+    was not saved, which a row may tell again though its handler is blocked, so nothing loops.
+    A change that cannot be saved puts the switch back and says why (Setting Not Saved). True:
+    the change is saved."""
+    on = row.get_active()
+    if on == saved:
+        return False
+    try:
+        save(on)
+    except (OSError, SetupError) as e:
+        row.handler_block_by_func(handler)
+        row.set_active(not on)
+        row.handler_unblock_by_func(handler)
+        # TRANSLATORS: heading of the error when a switch of a setting could not be saved (in
+        # the preferences, on the device page, under the map of an activity)
+        win.error(_("Setting Not Saved"), not_saved_text(e))
+        return False
+    return True
 
 
 def wait_for_the_diagnostics(session, fn) -> None:
@@ -746,6 +783,32 @@ def inform(parent, name: str, heading: str, body: str, *, label: str | None = No
     return d
 
 
+def choose_local_file(win, title: str, filter_name: str, patterns: tuple[str, ...],
+                      not_local: str, then: Callable[[Path], object]) -> None:
+    """One file chosen through the file chooser (the portal in the Flatpak: any folder), only
+    those of `patterns` shown, under `filter_name`; `then` gets its path. Cancelled: nothing;
+    a file without a path on this computer: the toast `not_local`."""
+    dialog = Gtk.FileDialog(title=title)
+    only = Gtk.FileFilter(name=filter_name)
+    for pattern in patterns:
+        only.add_pattern(pattern)
+    filters = Gio.ListStore.new(Gtk.FileFilter)
+    filters.append(only)
+    dialog.set_filters(filters)
+
+    def chosen(dlg, res):
+        try:
+            path = dlg.open_finish(res).get_path()
+        except GLib.Error:
+            return  # cancelled
+        if path is None:
+            win.toast(not_local)
+            return
+        then(Path(path))
+
+    dialog.open(win, None, chosen)
+
+
 class TaskRunner:
     def toast(self, text: str, on_preferences: bool = False) -> None:
         """A short message: on a device's view above its bar at the bottom (where the next
@@ -940,7 +1003,7 @@ class TaskRunner:
             try:
                 with stalled.telling(self, e):  # a stall: the banner, no error dialog
                     if not (on_error and on_error(e)):
-                        self.error(error_heading(failed_title), error_text(e))
+                        self.error(error_heading(failed_title), failed_text(e))
             finally:
                 self._run_pending_refresh()
             return False

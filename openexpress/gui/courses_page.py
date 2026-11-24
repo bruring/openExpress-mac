@@ -18,7 +18,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gio, GLib, GObject, Graphene, Gsk, Gtk, Pango  # noqa: E402 - imports must follow gi.require_version
+from gi.repository import Adw, GObject, Graphene, Gsk, Gtk, Pango  # noqa: E402 - imports must follow gi.require_version
 
 from openexpress import courses  # noqa: E402
 from openexpress.course_gpx import CourseFileError  # noqa: E402
@@ -29,6 +29,7 @@ from openexpress.gui.window_tasks import (  # noqa: E402
     DIALOG_MARGINS,
     Answer,
     chip,
+    choose_local_file,
     confirm,
     wrapping_line,
 )
@@ -429,25 +430,9 @@ class CoursesPage:
     def choose_course(self) -> None:
         """Add Course…: a GPX file chosen through the file chooser (the portal in the Flatpak:
         any folder), then checked and asked about (add_course)."""
-        dialog = Gtk.FileDialog(title=_("Choose a GPX File"))
-        only_gpx = Gtk.FileFilter(name=_("GPX files (*.gpx)"))
-        only_gpx.add_pattern("*.gpx")
-        only_gpx.add_pattern("*.GPX")
-        filters = Gio.ListStore.new(Gtk.FileFilter)
-        filters.append(only_gpx)
-        dialog.set_filters(filters)
-
-        def chosen(dlg, res):
-            try:
-                path = dlg.open_finish(res).get_path()
-            except GLib.Error:
-                return  # cancelled
-            if path is None:
-                self.toast(_("Choose a file stored on this computer"))
-                return
-            self.add_course(Path(path))
-
-        dialog.open(self, None, chosen)
+        choose_local_file(self, _("Choose a GPX File"), _("GPX files (*.gpx)"),
+                          ("*.gpx", "*.GPX"), _("Choose a file stored on this computer"),
+                          self.add_course)
 
     def _course_refused(self, e, title: str | None = None) -> bool:
         """A refusal of courses.py or course_gpx.py over the page, under `title` (by default,

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 import pytest
-from fakes import RunNow, descendants
+from fakes import RunNow, descendants, preferences_window
 from fakes import window as stand_in
 
 
@@ -817,21 +817,13 @@ def types_namespace(**kw):
 def test_preferences_have_the_storage_group(cache, monkeypatch):
     """The "Storage" group is in the preferences, after Sync, Language and Setup; the
     activity maps after Diagnostics."""
-    import types
-
     from gi.repository import Adw, Gtk
 
     from openexpress.gui.app import MainWindow
 
     shown = []
     monkeypatch.setattr(Adw.PreferencesDialog, "present", lambda self, parent: shown.append(self))
-    win = stand_in(busy=False, _action_buttons=[], _background_enabled=lambda: False,
-                   set_background=lambda on, done=None: None, choose_dll=lambda: None,
-                   error=lambda title, text: None, run_task=None, toast=None)
-    for name in ("_button", "_cache_group", "_ask_clear_cache",
-                 "_account_group", "_account_action"):
-        if hasattr(MainWindow, name):  # one missing: the test fails on what it checks
-            setattr(win, name, types.MethodType(getattr(MainWindow, name), win))
+    win = preferences_window()
     titles, add = [], Adw.PreferencesPage.add
     monkeypatch.setattr(Adw.PreferencesPage, "add",
                         lambda page, group: titles.append(group.get_title()) or add(page, group))
@@ -862,16 +854,9 @@ def test_the_preferences_show_the_account_and_log_in_or_out(monkeypatch, in_the_
     monkeypatch.setattr(Adw.PreferencesDialog, "present", lambda self, parent: shown.append(self))
     client = types.SimpleNamespace(auth=types.SimpleNamespace(display="someone"))
     in_the_window("account_client", lambda: client)
-    win = stand_in(busy=False, _action_buttons=[], _background_enabled=lambda: False,
-                   set_background=lambda on, done=None: None, choose_dll=lambda: None,
-                   error=lambda title, text: None, run_task=None, toast=None,
-                   session=None, refresh_device=lambda **kw: None,
-                   logout=lambda: calls.append("logout"),
-                   login=lambda: calls.append("login"))
-    for name in ("_button", "_cache_group", "_ask_clear_cache",
-                 "_account_group", "_account_action"):
-        if hasattr(MainWindow, name):  # one missing: the test fails on what it checks
-            setattr(win, name, types.MethodType(getattr(MainWindow, name), win))
+    win = preferences_window(session=None, refresh_device=lambda **kw: None,
+                             logout=lambda: calls.append("logout"),
+                             login=lambda: calls.append("login"))
     groups, add = [], Adw.PreferencesPage.add
     monkeypatch.setattr(Adw.PreferencesPage, "add",
                         lambda page, group: groups.append(group) or add(page, group))

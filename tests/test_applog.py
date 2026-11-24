@@ -343,13 +343,13 @@ def test_a_server_answer_shown_with_v_is_redacted(log_file, monkeypatch, capsys)
     from openexpress.connect import ApiError
 
     def refused(args):
-        raise ApiError("Upload: HTTP 500", 500,
+        raise ApiError("Upload: server error (HTTP 500)", 500,
                        '{"unitId": 3987654321, "owner": "a@example.org", "at": "' + SECRET_ADDRESS + '"}')
 
     monkeypatch.setattr(cli, "cmd_info", refused)
     assert cli.main(["info"]) == 1
     err = capsys.readouterr().err
-    assert "Server error: Upload: HTTP 500" in err and "unitId" not in err  # no body without -v
+    assert "Error: Upload: server error (HTTP 500)" in err and "unitId" not in err  # no body w/o -v
     assert cli.main(["-v", "info"]) == 1
     err = capsys.readouterr().err
     assert '{"unitId": <number>, "owner": "<email>", "at": "mtp://<device>/' in err
@@ -387,8 +387,11 @@ def test_an_unexpected_error_is_told_briefly_and_redacted(log_file, monkeypatch,
     monkeypatch.setattr(cli, "cmd_info", broken)
     assert cli.main(["info"]) == 1
     err = capsys.readouterr().err
-    # The user gets one line, filtered; no traceback without -v.
-    assert err == "Error: cannot read mtp://<device>/GARMIN/Activity/x.fit of unit <number>\n"
+    # The user gets the error in one line, filtered, and how to report it; no traceback
+    # without -v.
+    assert err == ("Error: cannot read mtp://<device>/GARMIN/Activity/x.fit of unit <number>\n"
+                   "This is a bug in openExpress. To report it, run openexpress report --log "
+                   "and follow what it prints.\n")
     # The log file has it all, filtered.
     text = "\n".join(lines(log_file))
     assert "INFO openexpress.cli: unexpected error: RuntimeError" in text and "Traceback" in text

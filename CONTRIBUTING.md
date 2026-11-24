@@ -12,7 +12,8 @@ What the tests need:
   WebKitGTK 6.0.
 - GNU gettext (`msgfmt`): the tests build the translations for themselves.
 - AppStream's rules for the metainfo (`metainfo.its`, from the `appstream` package): without
-  them xgettext puts texts not to translate in the template, and making it is refused. With
+  them xgettext would put texts that must not be translated into the template, so making the
+  template (`tools/update-template.sh`, and the tests that make it) stops with an error. With
   Homebrew, whose xgettext does not look in its own prefix, also set
   `XDG_DATA_DIRS=/opt/homebrew/share`.
 - Optional: without libusb-1.0 the PTP test is skipped quietly, and without the Adwaita Sans font

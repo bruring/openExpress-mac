@@ -22,6 +22,9 @@ class DeviceFile:
     path: str
     basename: str = ""
     extension: str = ""
+    # Where files of this type go on the device's memory card, from the root of the card
+    # (DataTypeLocationExtension/ExternalPath, e.g. "Garmin"); None: they are never put there.
+    external_path: str | None = None
 
     @property
     def readable(self) -> bool:
@@ -61,6 +64,20 @@ class UpdateFile:
     filename: str
 
 
+@dataclass(frozen=True)
+class StorageLocation:
+    """A storage the device declares for a kind of files besides its own memory
+    (StorageLocationsExtension/Location): its memory card, as MTP names it (`mtp_id`, e.g.
+    "Memory Card") and as the label of its drive in mass storage mode (`ums_id`)."""
+
+    name: str  # what it holds, e.g. "Map"
+    mtp_id: str
+    ums_id: str = ""
+    supported_format: str = ""  # e.g. "FAT32"
+    min_size: int | None = None  # bytes
+    max_size: int | None = None
+
+
 @dataclass
 class GarminDevice:
     unit_id: int
@@ -71,6 +88,7 @@ class GarminDevice:
     update_files: list[UpdateFile] = field(default_factory=list)
     iq_max_apps: int | None = None
     iq_app_space: int | None = None
+    storage_locations: list[StorageLocation] = field(default_factory=list)
     raw: bytes = b""
 
     @property
@@ -95,6 +113,39 @@ def _text(el: ET.Element | None, tag: str, default: str = "") -> str:
         return default
     child = el.find(NS + tag)
     return child.text.strip() if child is not None and child.text else default
+
+
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _external_path(location: ET.Element | None) -> str | None:
+    """The ExternalPath of a <Location> (its DataTypeLocationExtension, in a namespace of its
+    own), "/" for "\\" and without slashes at its ends; None when it has none."""
+    if location is None:
+        return None
+    for el in location.iter():
+        if _local(el.tag) == "ExternalPath" and el.text and el.text.strip():
+            return el.text.strip().replace("\\", "/").strip("/")
+    return None
+
+
+def _size(value: str | None) -> int | None:
+    return int(value) if value and value.strip().isdecimal() else None
+
+
+def _storage_locations(root: ET.Element) -> list[StorageLocation]:
+    out = []
+    for ext in root.iter():
+        if _local(ext.tag) != "StorageLocationsExtension":
+            continue
+        for loc in ext:
+            if _local(loc.tag) == "Location" and loc.get("MTPId"):
+                out.append(StorageLocation(
+                    name=loc.get("Name", ""), mtp_id=loc.get("MTPId", ""),
+                    ums_id=loc.get("UMSId", ""), supported_format=loc.get("SupportedFormat", ""),
+                    min_size=_size(loc.get("MinSize")), max_size=_size(loc.get("MaxSize"))))
+    return out
 
 
 def _component_version(major: str, minor: str) -> str:
@@ -127,6 +178,7 @@ def parse(data: bytes) -> GarminDevice:
                         path=_text(loc, "Path"),
                         basename=_text(loc, "BaseName"),
                         extension=_text(loc, "FileExtension"),
+                        external_path=_external_path(loc),
                     )
                 )
         for uf in msm.findall(NS + "UpdateFile"):
@@ -146,4 +198,5 @@ def parse(data: bytes) -> GarminDevice:
                     dev.iq_max_apps = int(child.text)
                 elif child.tag.endswith("}AppSpace") and child.text:
                     dev.iq_app_space = int(child.text)
+    dev.storage_locations = _storage_locations(root)
     return dev

@@ -196,6 +196,121 @@ struct ModelTests {
         #expect(await engine.calls.map(\.method).contains("maps.install"))
     }
 
+    /// A handheld with a memory card (GPSMAP H1i Plus): an install on the card is always
+    /// confirmed, with the card's free space; it goes to the engine with `"to": "card"`.
+    @Test func installOnTheMemoryCard() async throws {
+        let (app, engine) = makeApp(.handheld)
+        await app.start()
+        let model = try #require(app.model(for: MockEngine.handheldID))
+        await model.load(.maps)
+        let card = try #require(model.maps?.card)
+        let japan = try #require(model.maps?.available.first { $0.name == "TopoActive Japan" })
+        model.requestInstall(map: japan, to: .card)
+        let plan = try #require(model.pendingPlan)
+        #expect(plan.toCard && !plan.isMove && plan.freeNow == card.free)
+        model.perform(plan)
+        await model.waitForOperation()
+        let call = try #require(await engine.calls.last { $0.method == "maps.install" })
+        #expect(call.params?["to"]?.stringValue == "card")
+        #expect(model.maps?.maps.first { $0.name == "TopoActive Japan" }?.location == .card)
+    }
+
+    @Test func moveBetweenTheDeviceAndItsCard() async throws {
+        let (app, engine) = makeApp(.handheld)
+        await app.start()
+        let model = try #require(app.model(for: MockEngine.handheldID))
+        await model.load(.maps)
+        let canada = try #require(model.maps?.installed.first { $0.name == "TopoActive Canada" })
+        model.requestMove(map: canada, to: .card)
+        let plan = try #require(model.pendingPlan)  // always confirmed
+        #expect(plan.isMove && plan.toCard && !plan.keepsOne)
+        #expect(plan.totalBytes == canada.moveSize && plan.items.first?.change == "Device → Memory Card")
+        model.perform(plan)
+        await model.waitForOperation()
+        let call = try #require(await engine.calls.last { $0.method == "maps.move" })
+        #expect(call.params?["to"]?.stringValue == "card")
+        #expect(call.params?["maps"]?.arrayValue?.compactMap(\.stringValue) == ["TopoActive Canada"])
+        #expect(model.maps?.maps.first { $0.name == "TopoActive Canada" }?.location == .card)
+    }
+
+    /// A long write of the memory card over USB offers the card reader; the move then goes to
+    /// the engine with the card's volume.
+    @Test func aSlowCardWriteOffersTheCardReader() async throws {
+        let (app, engine) = makeApp(.handheld)
+        await app.start()
+        let model = try #require(app.model(for: MockEngine.handheldID))
+        await model.load(.maps)
+        let canada = try #require(model.maps?.installed.first { $0.name == "TopoActive Canada" })
+        model.requestMove(map: canada, to: .card)
+        var plan = try #require(model.pendingPlan)
+        // Downloads go at 25 MB/s (the mock's): faster than the device reads at 8 MB/s, so a
+        // download is chosen; then written to the card at 3.9 MB/s over USB, fast in the reader.
+        let size = 2_864_971_776.0
+        #expect(plan.source == .download)
+        #expect(abs((plan.secondsMoving(from: .device) ?? 0) - (size / 8_000_000 + size / 3_900_000)) < 1)
+        #expect(abs((plan.secondsMoving(from: .download) ?? 0) - (size / 25_000_000 + size / 3_900_000)) < 1)
+        let usb = try #require(plan.secondsOverUSB)
+        #expect(abs(usb - (size / 25_000_000 + size / 3_900_000)) < 1)
+        let reader = try #require(plan.secondsInReader)
+        #expect(abs(reader - (size / 25_000_000 + size / 60_000_000)) < 1)
+        #expect(plan.offersCardReader)
+        let readers = try #require(await model.cardReaders())
+        let card = try #require(readers.card)
+        #expect(card.name == "MAPCARD" && readers.remembered)
+        plan.cardReader = card.path
+        #expect(!plan.offersCardReader)  // chosen already
+        model.perform(plan)
+        await model.waitForOperation()
+        let call = try #require(await engine.calls.last { $0.method == "maps.move" })
+        #expect(call.params?["card_reader"]?.stringValue == "/Volumes/MAPCARD")
+        #expect(call.params?["to"]?.stringValue == "card")
+        #expect(call.params?["source"]?.stringValue == "download")
+    }
+
+    /// Without a known download speed the device is the source; what is in the cache is
+    /// neither read nor downloaded, so it takes no time.
+    @Test func theSourceOfAMoveAndWhatTheCacheSaves() {
+        var plan = InstallPlan(items: [.init(id: "move:A", kind: .map, name: "A", change: nil, size: 80_000_000)],
+                               action: .moveMap("A", to: .internal), freeNow: nil)
+        #expect(plan.fasterSource == .device)
+        #expect(plan.secondsMoving(from: .download) == nil)
+        #expect(abs((plan.secondsMoving(from: .device) ?? 0) - (10 + 80_000_000 / 11_700_000)) < 0.01)
+        plan.cachedBytes = 80_000_000
+        #expect(abs((plan.secondsMoving(from: .device) ?? 0) - 80_000_000 / 11_700_000) < 0.01)
+        plan.downloadSpeed = 1_000_000  // slow: the device stays the faster
+        plan.cachedBytes = 0
+        #expect(plan.fasterSource == .device)
+    }
+
+    @Test func aShortCardWriteDoesNotOfferTheCardReader() async throws {
+        let (app, _) = makeApp(.handheld)
+        await app.start()
+        let model = try #require(app.model(for: MockEngine.handheldID))
+        await model.load(.maps)
+        let taiwan = try #require(model.maps?.installed.first { $0.name == "TopoActive Taiwan" })
+        model.requestMove(map: taiwan, to: .internal)  // to the device: no card written
+        #expect(model.pendingPlan?.offersCardReader == false)
+        let japan = try #require(model.maps?.available.first { $0.name == "TopoActive Japan" })
+        model.requestInstall(map: japan, to: .card)  // 1.1 GB: about 5 min over USB
+        #expect(model.pendingPlan?.offersCardReader == true)
+    }
+
+    @Test func aMapOnBothStoragesIsKeptOnOne() async throws {
+        let (app, _) = makeApp(.handheld)
+        await app.start()
+        let model = try #require(app.model(for: MockEngine.handheldID))
+        await model.load(.maps)
+        let both = try #require(model.maps?.installed.first { $0.location == .both })
+        #expect(both.canRemove == false && both.canInstall == false && both.canMove == true)
+        model.requestMove(map: both, to: .internal)
+        let plan = try #require(model.pendingPlan)
+        #expect(plan.keepsOne && plan.isMove && !plan.toCard && plan.totalBytes == 0)
+        model.perform(plan)
+        await model.waitForOperation()
+        let kept = try #require(model.maps?.maps.first { $0.name == both.name })
+        #expect(kept.location == .internal && kept.canRemove == true)
+    }
+
     /// One source of truth: the badge after Overview equals the badge after Updates, the
     /// menu bar count and what Install All lists; betas are left out.
     @Test func badgeCountIsTheSameEverywhere() async throws {

@@ -25,7 +25,13 @@ from openexpress.gui import activity_map  # noqa: E402
 from openexpress.gui.connected import open_address  # noqa: E402
 from openexpress.gui.gui_settings import update_gui_settings  # noqa: E402
 from openexpress.gui.navigation import Cause  # noqa: E402
-from openexpress.gui.window_tasks import Answer, confirm, wraps_when_folded  # noqa: E402
+from openexpress.gui.window_tasks import (  # noqa: E402
+    Answer,
+    confirm,
+    not_saved_text,
+    switch_saved,
+    wraps_when_folded,
+)
 from openexpress.i18n import N_, _, caption, human_size, ngettext, pgettext  # noqa: E402
 from openexpress.settings import (  # noqa: E402
     Settings,
@@ -54,7 +60,7 @@ def diagnostics_switch(win) -> Adw.SwitchRow:
     """Keep Diagnostic Files: the copy of the device's diagnostic files at each connection,
     off unless chosen (settings.json; the same as `setup --diagnostics-copy`), in the
     preferences and on the page Device Status. A change that cannot be saved puts the switch
-    back."""
+    back and says why (switch_saved)."""
     # TRANSLATORS: switch in the preferences and on the page Device Status: a copy of the
     # device's diagnostic files at each connection
     sw = Adw.SwitchRow(title=_("Keep Diagnostic Files"),
@@ -62,21 +68,15 @@ def diagnostics_switch(win) -> Adw.SwitchRow:
                                   "computer; openExpress never sends them"),
                        active=diagnostics.copy_on())
 
+    def save(on: bool) -> None:
+        settings = Settings.load()
+        settings.diagnostics_copy = on
+        settings.save()
+
     def toggled(row, _pspec):
-        wanted = row.get_active()
-        try:
-            settings = Settings.load()
-            settings.diagnostics_copy = wanted
-            settings.save()
-        except (OSError, SetupError) as e:
-            row.handler_block_by_func(toggled)
-            row.set_active(not wanted)
-            row.handler_unblock_by_func(toggled)
-            # TRANSLATORS: heading of the error when a switch of the preferences could not be
-            # saved
-            win.error(_("Setting Not Saved"), str(e))
-            return
-        log.info("diagnostics: the copy at each connection turned %s", "on" if wanted else "off")
+        if switch_saved(win, row, toggled, diagnostics.copy_on(), save):
+            log.info("diagnostics: the copy at each connection turned %s",
+                     "on" if row.get_active() else "off")
 
     sw.connect("notify::active", toggled)
     return sw
@@ -85,7 +85,7 @@ def diagnostics_switch(win) -> Adw.SwitchRow:
 def maps_group(win) -> Adw.PreferencesGroup:
     """The "Activity Maps" group: OpenStreetMap's tiles under the track of an activity, off
     until the yes (here or on the page, gui.json); taken back or given here, the map shown now
-    follows."""
+    follows. A change that cannot be saved puts the switch back and says why (switch_saved)."""
     # TRANSLATORS: group in the preferences: the street map from OpenStreetMap under the track of an
     # activity
     g = Adw.PreferencesGroup(title=_("Activity Maps"))
@@ -95,8 +95,8 @@ def maps_group(win) -> Adw.PreferencesGroup:
                        active=activity_map.tiles_on())
 
     def toggled(row, _pspec):
-        activity_map.set_tiles(row.get_active())
-        activity_map.tiles_changed(win)
+        if switch_saved(win, row, toggled, activity_map.tiles_on(), activity_map.set_tiles):
+            activity_map.tiles_changed(win)
 
     sw.connect("notify::active", toggled)
     g.add(sw)
@@ -328,13 +328,13 @@ class Preferences:
 
         try:
             background.set_enabled(enabled, done)
-        except Exception as e:  # noqa: BLE001
-            log.debug("%s", traceback.format_exc())
-            done(False, str(e))
+        except Exception as e:  # the window says its own words, the log the error
+            log.warning("background sync not changed: %s", type(e).__name__, exc_info=e)
+            done(False, "")
 
     def _auto_sync_row(self) -> Adw.SwitchRow:
-        """The background sync, on or off as it is, from the device page (the same as in
-        Preferences): a change that fails puts the switch back."""
+        """The background sync, on or off as it is, on the device page and in Preferences: a
+        change that fails puts the switch back."""
         row = Adw.SwitchRow(title=_("Background Sync"),
                             subtitle=_("Syncs each time a device is connected, even when "
                                        "the window is closed"),
@@ -371,27 +371,7 @@ class Preferences:
                                              setattr(self, "_storage", None),
                                              setattr(self, "_preferences", None)))
         g = Adw.PreferencesGroup(title=_("Sync With Garmin Connect"))
-        sw = Adw.SwitchRow(
-            title=_("Background Sync"),
-            subtitle=_("Syncs each time a device is connected, even when the window is "
-                       "closed"),
-            active=self._background_enabled())
-
-        def toggled(row, _pspec):
-            wanted = row.get_active()
-            if wanted == self._background_enabled():
-                return
-
-            def result(ok):
-                if not ok:
-                    row.handler_block_by_func(toggled)
-                    row.set_active(not wanted)
-                    row.handler_unblock_by_func(toggled)
-
-            self.set_background(wanted, result)
-
-        sw.connect("notify::active", toggled)
-        g.add(sw)
+        g.add(self._auto_sync_row())
         page.add(g)
 
         g = Adw.PreferencesGroup(title=_("Language"))
@@ -411,7 +391,7 @@ class Preferences:
             except (OSError, ValueError) as e:
                 # TRANSLATORS: heading of the error when the language of the interface could not
                 # be saved
-                self.error(_("Language Not Changed"), str(e))
+                self.error(_("Language Not Changed"), not_saved_text(e))
                 return
             shown = self._preferences
             if shown is not None:
@@ -608,19 +588,11 @@ class Preferences:
 
             def work():
                 client = service.make_client(settings)
-                token, secret = client.exchange_ticket(st.ticket, st.service)
-                auth = store.ConnectAuth(token, secret, settings.environment)
-                client.auth = auth
-                profile_ok = True
-                try:
-                    prof = client.user_profile()
-                    auth.account = {k: prof.get(k) for k in
-                                    ("userprofilepk", "username", "emailaddress", "garminguid")}
-                except Exception:  # noqa: BLE001 - the token works without the profile
-                    log.debug("%s", traceback.format_exc())
-                    profile_ok = False
+                auth, error = service.signed_in(client, settings, st)
+                if error is not None:
+                    log.debug("%s", "".join(traceback.format_exception(error)))
                 store.save(auth)
-                return auth, profile_ok
+                return auth, error is None
 
             def done(result):
                 auth, profile_ok = result

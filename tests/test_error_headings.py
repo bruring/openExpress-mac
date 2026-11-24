@@ -116,3 +116,47 @@ def test_apps_queued_in_garmin_connect_are_information_not_an_error():
     errors = [_words(c.args[0]) for c in calls if _called(c) == "error"]
     told = [_words(c.args[2]) for c in calls if _called(c) == "inform" and len(c.args) > 2]
     assert "Queued in Garmin Connect" not in errors and "Queued in Garmin Connect" in told
+
+
+# An error nobody foresaw says that it is a bug in openExpress and how to report it
+
+FAULT = ("This is a bug in openExpress. To report it, choose “Report a Device or Problem…” "
+         "in the main menu and attach the last log.")
+
+
+def _failed(monkeypatch, error):
+    """The words of the error dialog of a task that raised `error`."""
+    from openexpress.gui import app
+
+    _at_once(monkeypatch)
+    told = []
+    win = stand_in(busy=False, session=None, set_busy=lambda *a, **kw: None,
+                   error=lambda title, text: told.append(text),
+                   _run_pending_refresh=lambda: None)
+
+    def work():
+        raise error
+
+    app.MainWindow.run_task(win, "Copying the Map…", work, failed_title="Map Not Added")
+    (text,) = told
+    return text
+
+
+def test_an_error_nobody_foresaw_says_it_is_a_bug_in_openexpress_in_the_window(monkeypatch):
+    assert _failed(monkeypatch, RuntimeError("made-up failure")) == (
+        f"made-up failure\n\n{FAULT}")
+
+
+@pytest.mark.parametrize("error", [
+    "words for the user", "no space on this computer", "no network"])
+def test_an_error_with_words_of_its_own_says_no_fault(monkeypatch, error):
+    """A message for the user, the system's words of a file it could not write, the network:
+    not a fault of the program."""
+    import requests
+
+    from openexpress.errors import UserFacingError
+
+    made = {"words for the user": UserFacingError("Made-up words for the user."),
+            "no space on this computer": OSError(28, "No space left on device"),
+            "no network": requests.ConnectionError("made-up")}[error]
+    assert FAULT not in _failed(monkeypatch, made)

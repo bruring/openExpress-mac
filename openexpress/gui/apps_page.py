@@ -78,7 +78,11 @@ class AppsPage:
             return
         if s.ownership_error is not None:
             sec.clear()
-            sec.show_error(str(s.ownership_error))  # an error: Try Again checks once more
+            # An error: Try Again checks once more. The account's list not had: the words of the
+            # banner, not those of the sync it stopped, which this page did not start.
+            error = s.ownership_error
+            sec.show_error(self._ownership_title(error)
+                           if isinstance(error, service.OwnershipUnknown) else str(error))
             return
 
         def work():
@@ -205,10 +209,13 @@ class AppsPage:
         # (sports) and apps
         search = Gtk.SearchEntry(placeholder_text=_("Search activities"), margin_bottom=12)
         g.add(search)
-        # TRANSLATORS: expander row that opens the list of built-in activities and apps ({count}:
-        # how many)
-        exp = Adw.ExpanderRow(title=ngettext("Show {count} Item", "Show {count} Items",
-                                             len(builtin)).format(count=len(builtin)))
+        # TRANSLATORS: title of an expandable row in "Built-In Activities and Apps" that lists
+        # all of them
+        exp = Adw.ExpanderRow(title=_("All Activities and Apps"),
+                              # TRANSLATORS: subtitle of the row "All Activities and Apps":
+                              # how many built-in activities and apps it lists
+                              subtitle=ngettext("{count} item", "{count} items",
+                                                len(builtin)).format(count=len(builtin)))
         listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         listbox.add_css_class("boxed-list")
         listbox.append(exp)
@@ -327,7 +334,9 @@ class AppsPage:
 
         lines = [("  " if indented else "") + text
                  for text, indented in ciq.describe_order(plan, 10)]
-        lines += ["", _("The same apps with the same flags; only the order changes."), copy_note]
+        # TRANSLATORS: "as it is" / "each as it is now": each app stays turned on or off and
+        # marked as a favourite or not in the app list, as it was
+        lines += ["", _("The same apps, each as it is now; only the order changes."), copy_note]
         return "\n".join(lines)
 
     def choose_order(self, button: Gtk.Button | None = None) -> None:

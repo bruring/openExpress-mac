@@ -412,7 +412,7 @@ def test_an_update_for_the_file_of_one_copied_already_waits(monkeypatch):
     gps, other = _items(GPS_ENTRY, sensor)
     gps.on_device = True  # copied, the device has not installed it yet
     _win, status, groups, _buttons = _updates_page([gps, other])
-    assert status["texts"][0][0].startswith("Update ready")
+    assert status["texts"][0][0] == "Update Ready"
     (available,) = groups
     (row,) = available.rows
     assert row.get_title() == "Test Sensor Software"
@@ -535,10 +535,10 @@ NOT_INSTALLED_TITLE = "Update Not Installed by the Device"
 NOT_INSTALLED_ROW = "Update copied, not installed by the device"
 NOT_INSTALLED_ADVICE = ("Check the version on the device (Settings \u2192 System \u2192 About). "
                         "Ejecting it again does not help; a device report helps find out why.")
-AS_COPIED_LINE = (f"Copied {COPIED_WHEN}. The device was unplugged since and has not installed "
-                  "it; the file is still on it, unchanged.")
-CHANGED_LINE = (f"Copied {COPIED_WHEN}. The device was unplugged since, changed or refused the "
-                "file and has not installed it.")
+AS_COPIED_LINE = (f"Copied {COPIED_WHEN}. Since then the device has been unplugged and has not "
+                  "installed it; the file is still on it, unchanged.")
+CHANGED_LINE = (f"Copied {COPIED_WHEN}. Since then the device has been unplugged, has changed "
+                "or refused the file, and has not installed it.")
 
 
 def _gps_on_the_device(root, data=GPS):
@@ -663,8 +663,8 @@ def test_cli_says_the_device_did_not_install_it(device_root, monkeypatch, capsys
     assert out[1:4] == [
         "Copied, not installed by the device:",
         "  006-B0001-00          6.70  Recommended       12 B  Test GPS Software",
-        (f"      Copied {COPIED_WHEN}; the device was unplugged since and has not installed it "
-         "(the file is still on it).")]
+        (f"      Copied {COPIED_WHEN}; since then the device has been unplugged and has not "
+         "installed it (the file is still on it).")]
     assert not any("to install it" in line.lower() for line in out)
     assert main(["--path", str(device_root), "updates", "--install", "all"]) == 0
     assert "To install:" not in capsys.readouterr().out
@@ -738,7 +738,8 @@ def test_cli_says_a_copied_component_waits_for_the_device(device_root, monkeypat
     assert "Test Font" in out.split("Update copied, waiting")[1]
 
 def test_what_was_copied_before_a_failure_is_kept(device_root, tmp_path, monkeypatch):
-    """A copy that fails after some updates were written: those are kept as copied."""
+    """A copy that fails after some updates were written: those are kept as copied, the one
+    refused is said with why."""
     from openexpress import known_devices
 
     _remember_the_device()
@@ -760,8 +761,9 @@ def test_what_was_copied_before_a_failure_is_kept(device_root, tmp_path, monkeyp
         return write(path, local, progress, **kw)
 
     monkeypatch.setattr(storage, "write_file_checked", bundle_fails)
-    with pytest.raises(updates.UpdateError):
-        updates.install(items, storage, unit_id=UNIT)
+    report = updates.install(items, storage, unit_id=UNIT)
+    assert [(u.part_number, why) for u, why in report.failed] == [
+        ("006-V0000-00", "the cable came out")]
     assert list(dict(known_devices.load()[UNIT].copied_updates)) == ["006-D0000-00.23.40"]
 
 
@@ -1149,7 +1151,8 @@ def test_status_with_a_beta_system_update():
         (f"{VERSIONS}\u00a0· Beta\u00a0· 12\u00a0B",
          [["dim-label"], ["heading", "warning"], ["dim-label"], ["dim-label"]]),
         ("Test Bundle\u00a0· Recommended", ["caption", "dim-label"]),
-        ("Garmin offers beta software for this device.", ["caption", "dim-label"])]
+        # One sentence under the heading: no full stop (the command line keeps its own).
+        ("Garmin offers beta software for this device", ["caption", "dim-label"])]
 
 
 @pytest.mark.needs_display
@@ -1159,12 +1162,12 @@ def test_status_says_beta_versions_are_offered_when_none_is_listed():
     _win, status, _groups, _buttons = _updates_page(items, beta=True)
     assert [t for t, _c in status["texts"]][1:] == [
         f"{VERSIONS}\u00a0· 12\u00a0B", "Test Bundle\u00a0· Recommended",
-        "Garmin offers beta software for this device."]
+        "Garmin offers beta software for this device"]
     # Up to date: the line is there as well.
     _win, status, _groups, _buttons = _updates_page([], beta=True)
     assert [t for t, _c in status["texts"]] == [
         "Software is up to date", "Software 23.39",
-        "Garmin offers beta software for this device."]
+        "Garmin offers beta software for this device"]
 
 
 @pytest.mark.needs_display
@@ -1183,7 +1186,8 @@ def test_the_page_learns_from_the_answer_whether_beta_versions_are_offered(devic
             unit_info_answer={},  # asked when the device was opened
             client=types.SimpleNamespace(
                 software_updates=lambda raw, include_reinstalls=False: lower_keys(beta_answer()))),
-        show_updates=lambda items, beta=False: shown.append(([u.part_number for u in items], beta)))
+        show_updates=lambda items, beta=False: shown.append(([u.part_number for u in items], beta)),
+        progress=lambda text: None)
     win._load = lambda key, title, work, show, on_error=None: show(work())
     MainWindow.load_updates(win)
     assert shown == [(["006-D0000-00", "006-V0000-00"], True)]
@@ -1218,7 +1222,7 @@ def test_beta_in_the_window_in_polish(monkeypatch):
     assert [t for t, _c in status["texts"]] == [
         "Dostępne są 2 aktualizacje", f"{VERSIONS}\u00a0· Beta\u00a0· 12\u00a0B",
         "Test Bundle\u00a0· Zalecana",
-        "Garmin oferuje dla tego urządzenia oprogramowanie w\u00a0wersji beta."]
+        "Garmin oferuje dla tego urządzenia oprogramowanie w\u00a0wersji beta"]
 
 
 def test_cli_marks_a_beta_version_in_what_will_be_installed(offered_beta, no_download, capsys):
@@ -1527,8 +1531,9 @@ def test_status_of_an_update_that_waits_for_the_device():
     _win, status, groups, _buttons = _updates_page(_staged_items())
     assert status == {
         "icon": ("software-update-available-symbolic", 96, False),
-        "texts": [("Update ready: unplug the device to install it", ["title-1"]),
-                  (VERSIONS, ["dim-label"]),  # what to do is in the title
+        "texts": [("Update Ready", ["title-1"]),
+                  ("Unplug the device to install it", []),  # what to do, under the heading
+                  (VERSIONS, ["dim-label"]),
                   ("Test Bundle\u00a0· Recommended", ["caption", "dim-label"])],
         "buttons": [("Check Again", False)]}  # nothing to install: no "Install"
     # Not a component to reinstall: only the font is there.
@@ -1558,9 +1563,9 @@ def test_with_an_older_libadwaita_the_beta_line_is_one_text_that_wraps(in_the_wi
 @pytest.mark.needs_display
 def test_status_of_a_beta_that_waits_for_the_device():
     _win, status, _groups, _buttons = _updates_page(_staged_items(BETA), beta=True)
-    assert status["texts"][1] == (
+    assert status["texts"][2] == (
         f"{VERSIONS}\u00a0· Beta", [["dim-label"], ["heading", "warning"]])
-    assert status["texts"][3][0] == "Garmin offers beta software for this device."
+    assert status["texts"][4][0] == "Garmin offers beta software for this device"
 
 
 @pytest.mark.needs_display
@@ -1568,7 +1573,8 @@ def test_status_of_an_update_that_waits_on_a_drive_offers_to_eject_it():
     """A device in mass storage mode takes the update once it is ejected: Eject, which does
     that; an MTP device is only to be disconnected, as above."""
     win, status, _groups, buttons = _updates_page(_staged_items(), drive=True)
-    assert status["texts"][:2] == [("Update ready: eject the device to install it", ["title-1"]),
+    assert status["texts"][:3] == [("Update Ready", ["title-1"]),
+                                   ("Eject the device to install it", []),
                                    (VERSIONS, ["dim-label"])]
     assert status["buttons"] == [("Eject", True), ("Check Again", False)]
     buttons[0].emit("clicked")
@@ -1578,8 +1584,8 @@ def test_status_of_an_update_that_waits_on_a_drive_offers_to_eject_it():
 @pytest.mark.needs_display
 def test_status_of_a_waiting_update_lists_what_is_still_to_install():
     _win, status, groups, _buttons = _updates_page(_staged_items(font_on_device=False))
-    assert status["texts"][0][0] == (
-        "Update ready: unplug the device to install it\u00a0· 1 more available")
+    assert [text for text, _styles in status["texts"][:2]] == [
+        "Update Ready", "Unplug the device to install it\u00a0· 1 more available"]
     (available,) = groups  # the font, to install before the device is disconnected
     assert [r.get_title() for r in available.rows] == ["Test Font"]
 
@@ -1723,8 +1729,8 @@ def test_after_copying_the_page_says_ready_without_asking_again(monkeypatch):
     assert win.shown == [] and asked[-1].get_heading() == "Done"  # a message, not an error
     assert asked[-1].get_body().endswith("\n\nStill available: 1 update")  # the font
     status, groups, _buttons = _read_page(win)
-    assert status["texts"][0][0] == (
-        "Update ready: unplug the device to install it\u00a0· 1 more available")
+    assert [text for text, _styles in status["texts"][:2]] == [
+        "Update Ready", "Unplug the device to install it\u00a0· 1 more available"]
     assert status["buttons"] == [("Check Again", False)]
     assert [r.get_title() for r in groups[0].rows] == ["Test Font"]  # still to install
 
@@ -1741,8 +1747,8 @@ def test_ready_in_polish():
         MainWindow._set_update_state(win, updates.pending(items), updates.staged(items))
     finally:
         i18n.setup("en")
-    assert [t for t, _c in status["texts"]][:2] == [
-        "Aktualizacja gotowa: odłącz urządzenie, aby ją zainstalować",
+    assert [t for t, _c in status["texts"]][:3] == [
+        "Aktualizacja gotowa", "Odłącz urządzenie, aby ją zainstalować",
         f"{VERSIONS}\u00a0· Beta"]
     assert status["buttons"] == [("Sprawdź ponownie", False)]
     assert win.update_row.get_subtitle() == (
@@ -2322,16 +2328,16 @@ def test_after_copying_components_the_page_says_ready_not_up_to_date(monkeypatch
         win.confirm_update(items[0])
     asked[0].emit("response", "ok")
     status, _groups, _buttons = _read_page(win)
-    word = "eject" if drive else "unplug"
+    word = "Eject" if drive else "Unplug"
     if how == "all":
         assert states[-1] == ([], ["006-D0000-00", "006-D0002-00"])
         assert [text for text, _styles in status["texts"]] == [
-            f"Updates ready: {word} the device to install them", "Software 23.39",
+            "Updates Ready", f"{word} the device to install them", "Software 23.39",
             "Test Font\u00a0· Test Map Data"]
     else:
         assert states[-1] == (["006-D0002-00"], ["006-D0000-00"])
         assert [text for text, _styles in status["texts"]] == [
-            f"Update ready: {word} the device to install it\u00a0· 1 more available", "23.40",
+            "Update Ready", f"{word} the device to install it\u00a0· 1 more available", "23.40",
             "Test Font\u00a0· Recommended"]
 
 @pytest.mark.needs_display
@@ -2373,3 +2379,13 @@ def test_install_all_copies_every_update_then_ejects_the_drive_once(monkeypatch,
         ["006-V0000-00", "006-D0000-00", "006-D0002-00"]]
     assert len(win.ejected) == 1
     assert all(u.on_device for u in items)
+
+
+@pytest.mark.parametrize("placeholder", ["NA", "N/A", " na ", "-", ""])
+def test_a_change_note_that_says_nothing_is_left_out(placeholder):
+    """Garmin fills the notes of some components with a placeholder ("NA"): no line of it in
+    the list nor in the question before the install."""
+    answer = server_answer()
+    answer["updates"][0]["releaseNotes"] = [{"changelog": [placeholder, "Made-up fix."]}]
+    (first, *_rest) = updates.parse_updates(lower_keys(answer))
+    assert first.changes == ["Made-up fix."]

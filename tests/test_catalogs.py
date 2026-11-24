@@ -455,7 +455,6 @@ def test_install_desktop_builds_the_catalogs_from_source_first(monkeypatch, caps
 
     order = []
     monkeypatch.setattr(background, "in_flatpak", lambda: False)
-    monkeypatch.setattr(desktop, "flatpak_installed", lambda: False)
     monkeypatch.setattr(catalogs, "build", lambda *a, **kw: order.append("catalogs") or [])
     # Never the real one: it would write the metainfo into the source tree.
     monkeypatch.setattr(catalogs, "compose_metainfo", lambda *a, **kw: order.append("metainfo"))
@@ -473,7 +472,6 @@ def test_install_desktop_without_gettext_says_so_and_goes_on_in_english(monkeypa
         raise catalogs.CatalogError("made-up: msgfmt is missing")
 
     monkeypatch.setattr(background, "in_flatpak", lambda: False)
-    monkeypatch.setattr(desktop, "flatpak_installed", lambda: False)
     monkeypatch.setattr(catalogs, "build", no_gettext)
     monkeypatch.setattr(desktop, "install", lambda dry_run: [])
     assert cli.main(["install-desktop", "--apply"]) == 0

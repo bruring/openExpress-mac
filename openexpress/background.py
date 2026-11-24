@@ -8,6 +8,7 @@ through its "quit" action over D-Bus.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -21,12 +22,17 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402 - imports must follow gi.require_version
 
-from openexpress import desktop  # noqa: E402
+from openexpress import desktop, paths  # noqa: E402
 from openexpress.i18n import _  # noqa: E402
 from openexpress.paths import in_flatpak  # noqa: E402
 
-WATCH_ID = desktop.DESKTOP_ID + ".Watch"
-WATCH_PATH = "/" + WATCH_ID.replace(".", "/")
+log = logging.getLogger(__name__)
+
+
+def watch_id() -> str:
+    """The ID of the background service of this install (paths.app_id with ".Watch"): the
+    Flatpak and the version from source each stop only their own."""
+    return paths.app_id() + ".Watch"
 
 
 def watcher_command() -> list[str]:
@@ -43,10 +49,15 @@ def start_watcher() -> None:
                      stderr=subprocess.DEVNULL)
 
 
+def _watcher_actions(name: str, path: str):
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    return Gio.DBusActionGroup.get(bus, name, path)
+
+
 def stop_watcher() -> None:
+    name = watch_id()
     try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        Gio.DBusActionGroup.get(bus, WATCH_ID, WATCH_PATH).activate_action("quit", None)
+        _watcher_actions(name, "/" + name.replace(".", "/")).activate_action("quit", None)
     except GLib.Error:
         pass
 
@@ -84,8 +95,26 @@ def _portal_request(autostart: bool, parent: str, done: Callable[[bool, str], No
                       GLib.Variant("(sa{sv})", (parent, options)), None,
                       Gio.DBusCallFlags.NONE, -1, None)
     except GLib.Error as e:
+        # The words of D-Bus only to the log, the window says its own.
+        log.info("background sync: the portal refused the request: %s", e.message)
         bus.signal_unsubscribe(sub[0])
-        done(False, e.message)
+        done(False, _no_background_text() if _no_background(e) else "")
+
+
+def _no_background_text() -> str:
+    # TRANSLATORS: why background sync could not be turned on in the Flatpak: the desktop's
+    # portal has no Background service; "the version from source" is openExpress installed from
+    # its source code, which runs in the background without the portal
+    return _("This desktop does not let Flatpak apps run in the background (its portal has no "
+             "Background service). Use the version from source to sync in the background.")
+
+
+def _no_background(e: GLib.Error) -> bool:
+    """Whether the portal's answer says that the desktop has no Background service: its portal
+    does not know the interface (e.g. sessions of wlroots), or there is no portal at all."""
+    return any(e.matches(Gio.dbus_error_quark(), code) for code in (
+        Gio.DBusError.UNKNOWN_METHOD, Gio.DBusError.UNKNOWN_INTERFACE,
+        Gio.DBusError.SERVICE_UNKNOWN))
 
 
 def _systemctl(*args: str) -> tuple[bool, str]:

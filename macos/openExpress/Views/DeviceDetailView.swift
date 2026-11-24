@@ -5,6 +5,9 @@ import SwiftUI
 struct DeviceDetailView: View {
     @Environment(AppModel.self) private var app
     let model: DeviceModel
+    /// A plan for which the card reader was chosen: its sheet opens once the confirmation's is
+    /// gone.
+    @State private var readerPlan: InstallPlan?
 
     /// The window is too narrow for the page titles (below this width the toolbar would push
     /// its trailing items into the overflow menu).
@@ -66,10 +69,20 @@ struct DeviceDetailView: View {
                     model.requestInstallAll()
                 }
             }
-            .sheet(item: $model.pendingPlan) { plan in
-                InstallConfirmationSheet(plan: plan, deviceName: model.device.shortName) {
-                    model.perform(plan)
+            .sheet(item: $model.pendingPlan, onDismiss: {
+                // Asked for the card reader: its sheet once this one is gone.
+                if let plan = readerPlan {
+                    readerPlan = nil
+                    model.pendingReaderPlan = plan
                 }
+            }) { plan in
+                InstallConfirmationSheet(plan: plan, deviceName: model.device.shortName,
+                                         useCardReader: { readerPlan = $0 }) { chosen in
+                    model.perform(chosen)
+                }
+            }
+            .sheet(item: $model.pendingReaderPlan) { plan in
+                CardReaderSheet(model: model, plan: plan)
             }
             .confirmationDialog("First Sync of \(model.device.shortName)", isPresented: $model.needsFirstSyncChoice) {
                 Button("Upload New Data Only") { model.sync(firstRun: .newOnly) }
@@ -217,6 +230,15 @@ struct OperationCapsule: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
+                if let speed = operation.rate.text {
+                    // "Download 12.3 MB/s · 2 min left", while bytes are moved.
+                    Label(speed, systemImage: operation.rate.kind == .download ? "arrow.down.circle" : "arrow.left.arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .contentTransition(.numericText())
+                }
             }
             .frame(minWidth: 180, alignment: .leading)
 
@@ -230,7 +252,7 @@ struct OperationCapsule: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(operation.kind.title), \(operation.detail)"))
+        .accessibilityLabel(Text("\(operation.kind.title), \(operation.detail)" + (operation.rate.text.map { ", \($0)" } ?? "")))
         .accessibilityValue(operation.progress?.fraction.map { Text($0, format: .percent.precision(.fractionLength(0))) } ?? Text(""))
     }
 }
@@ -238,15 +260,66 @@ struct OperationCapsule: View {
 /// Install All (and a large map) asks first: what, how much, the space left, and that the
 /// software installs only once the device is unplugged.
 struct InstallConfirmationSheet: View {
-    let plan: InstallPlan
+    let proposed: InstallPlan
     let deviceName: String
-    let install: () -> Void
+    /// Offered for a slow write of the memory card: the card in this Mac's card reader instead.
+    let useCardReader: ((InstallPlan) -> Void)?
+    let install: (InstallPlan) -> Void
+    /// A move: where its files come from (read off the device, or downloaded again).
+    @State private var source: MoveSource
     @Environment(\.dismiss) private var dismiss
+
+    init(plan: InstallPlan, deviceName: String, useCardReader: ((InstallPlan) -> Void)? = nil,
+         install: @escaping (InstallPlan) -> Void) {
+        proposed = plan
+        self.deviceName = deviceName
+        self.useCardReader = useCardReader
+        self.install = install
+        _source = State(initialValue: plan.source)
+    }
+
+    /// The plan as chosen here.
+    private var plan: InstallPlan {
+        var chosen = proposed
+        chosen.source = source
+        return chosen
+    }
+
+    /// "From the device, about 4 min" / "Download again from Garmin, about 1 min".
+    private func sourceLabel(_ from: MoveSource) -> String {
+        let time = plan.secondsMoving(from: from).map { TransferRate.timeLeft($0) }
+        switch from {
+        case .device:
+            return time.map { String(localized: "Copy from the device, about \($0)") }
+                ?? String(localized: "Copy from the device")
+        case .download:
+            return time.map { String(localized: "Download again from Garmin, about \($0)") }
+                ?? String(localized: "Download again from Garmin (its time depends on your connection)")
+        }
+    }
+
+    private var title: String {
+        let name = plan.items.first?.name ?? ""
+        switch plan.action {
+        case .moveMap(_, let to):
+            if plan.keepsOne {
+                return to == .card ? String(localized: "Keep \(name) on the Memory Card?")
+                    : String(localized: "Keep \(name) on the Device?")
+            }
+            return to == .card ? String(localized: "Move \(name) to the Memory Card?")
+                : String(localized: "Move \(name) to the Device?")
+        case .installMap(_, let to):
+            return to == .card ? String(localized: "Install \(name) on the Memory Card?")
+                : String(localized: "Install \(name)?")
+        case .installAll:
+            return plan.items.count == 1 ? String(localized: "Install \(name)?")
+                : String(localized: "Install \(plan.items.count) Updates on \(deviceName)?")
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(plan.items.count == 1 ? "Install \(plan.items[0].name)?" : "Install \(plan.items.count) Updates on \(deviceName)?",
-                  systemImage: "arrow.down.circle")
+            Label(title, systemImage: plan.isMove ? "arrow.left.arrow.right.circle" : "arrow.down.circle")
                 .font(.title2.weight(.semibold))
 
             Form {
@@ -268,10 +341,26 @@ struct InstallConfirmationSheet: View {
                         }
                     }
                 }
+                if plan.isMove, !plan.keepsOne {
+                    Section("Its Map Files") {
+                        Picker("Its Map Files", selection: $source) {
+                            Text(sourceLabel(.device)).tag(MoveSource.device)
+                            Text(sourceLabel(.download)).tag(MoveSource.download)
+                        }
+                        .pickerStyle(.radioGroup)
+                        .labelsHidden()
+                        Text("Either way, the map stays where it is until its new copy is written and checked.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section {
-                    LabeledContent("Download", value: Format.bytes(plan.totalBytes))
-                    if let after = plan.freeAfter {
-                        LabeledContent("Free on the device afterwards") {
+                    if !plan.keepsOne {
+                        LabeledContent(plan.isMove ? "Copied on the device" : "Download",
+                                       value: Format.bytes(plan.totalBytes))
+                    }
+                    if let after = plan.freeAfter, !plan.keepsOne {
+                        LabeledContent(plan.toCard ? "Free on the memory card afterwards" : "Free on the device afterwards") {
                             Text(after >= 0 ? Format.bytes(after) : String(localized: "\(Format.bytes(-after)) too little"))
                                 .foregroundStyle(after >= 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
                         }
@@ -284,6 +373,22 @@ struct InstallConfirmationSheet: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Label("Keep the device connected while the files are copied.", systemImage: "cable.connector")
+                if plan.keepsOne {
+                    Label("The copy kept is checked against Garmin's files first; then the other copy is removed.",
+                          systemImage: "checkmark.shield")
+                } else if plan.isMove {
+                    Label("The map's files are copied and checked, and only then removed from where they were. Its unlock and search files stay on the device.",
+                          systemImage: "checkmark.shield")
+                } else if plan.toCard {
+                    Label("The map's files go to the memory card; its unlock and search files stay on the device, as Garmin Express puts them.",
+                          systemImage: "sdcard")
+                }
+                if plan.offersCardReader, useCardReader != nil, let usb = plan.secondsOverUSB,
+                   let reader = plan.secondsInReader {
+                    Label("Over USB this takes about \(TransferRate.timeLeft(usb)): the device writes its memory card slowly. With the card in your Mac's card reader, about \(TransferRate.timeLeft(reader))\(plan.isMove ? "" : String(localized: " after the download")).",
+                          systemImage: "timer")
+                        .foregroundStyle(.orange)
+                }
                 if plan.hasSoftware {
                     Label("Then unplug the device: it installs the software by itself and restarts. Keep it charged.",
                           systemImage: "cable.connector.slash")
@@ -297,9 +402,17 @@ struct InstallConfirmationSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Install") {
+                if plan.offersCardReader, let useCardReader {
+                    Button("Use Card Reader…") {
+                        useCardReader(plan)
+                        dismiss()
+                    }
+                    .buttonStyle(.glass)
+                }
+                Button(plan.keepsOne ? "Keep" : plan.offersCardReader && useCardReader != nil ? "Over USB"
+                       : plan.isMove ? "Move" : "Install") {
                     dismiss()
-                    install()
+                    install(plan)
                 }
                 .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
@@ -308,6 +421,78 @@ struct InstallConfirmationSheet: View {
         }
         .padding(24)
         .frame(width: 500)
+    }
+}
+
+/// The memory card written in this Mac's card reader: take it out of the device (which stays
+/// connected), put it in the Mac; the card is recognised as the device's before anything is
+/// written, then the map's card files go to it, its unlock and search files to the device over
+/// USB, and the card is ejected to be put back.
+struct CardReaderSheet: View {
+    let model: DeviceModel
+    let plan: InstallPlan
+    @State private var found: CardReaderList?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Use Your Mac's Card Reader", systemImage: "sdcard")
+                .font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Take the memory card out of \(model.device.shortName). Leave the device connected.",
+                      systemImage: "1.circle")
+                Label("Put the card in your Mac's card reader.", systemImage: "2.circle")
+                Label("Once it is recognised, \(plan.items.first?.name ?? "the map") goes onto it; the card is then ejected, to go back into the device.",
+                      systemImage: "3.circle")
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            GroupBox {
+                if let card = found?.card {
+                    Label("\(card.name) is \(model.device.shortName)'s memory card.", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else if let other = found?.volumes.first {
+                    Label("\(other.name): \(other.reason ?? String(localized: "not this device's memory card"))",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                } else if found?.remembered == false {
+                    Label("openExpress has not seen this device's memory card yet: put it back in the device, open the Maps page once, then try again.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for the card…").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(plan.isMove ? "Move" : "Install") {
+                    var withReader = plan
+                    withReader.cardReader = found?.card?.path
+                    dismiss()
+                    model.perform(withReader)
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(found?.card == nil)
+            }
+        }
+        .padding(24)
+        .frame(width: 500)
+        .task {
+            // The reader asked every two seconds while the sheet is open (nothing is opened on
+            // the device for it).
+            while !Task.isCancelled {
+                found = await model.cardReaders()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
     }
 }
 

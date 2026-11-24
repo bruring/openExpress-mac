@@ -21,7 +21,7 @@ import os
 import struct
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import BinaryIO, Protocol
 
 from openexpress import applog, platform
@@ -280,11 +280,29 @@ class ObjectInfo:
         return self.format == FORMAT_FOLDER
 
 
+# StorageType of a StorageInfo dataset (PTP 5.2.2): a memory card is RemovableRAM.
+STORAGE_FIXED_ROM, STORAGE_REMOVABLE_ROM, STORAGE_FIXED_RAM, STORAGE_REMOVABLE_RAM = 1, 2, 3, 4
+
+
 @dataclass(frozen=True)
 class StorageInfo:
     capacity: int  # bytes
     free: int  # bytes
     description: str  # its name, as the device gives it (e.g. "Internal Storage")
+    # As the device gives them: StorageType (STORAGE_*), FilesystemType (2: generic
+    # hierarchical, all a Garmin device says) and AccessCapability (0: read and write).
+    storage_type: int = 0
+    filesystem: int = 0
+    access: int = 0
+
+    @property
+    def removable(self) -> bool:
+        """A storage the device says can be taken out (a memory card)."""
+        return self.storage_type in (STORAGE_REMOVABLE_ROM, STORAGE_REMOVABLE_RAM)
+
+    @property
+    def read_only(self) -> bool:
+        return self.access != 0
 
 
 def parse_object_info(handle: int, data: bytes, hidden: bool = False) -> ObjectInfo:
@@ -325,6 +343,47 @@ def ptp_time(text: str) -> float:
         return calendar.timegm((*parts, 0, 0, 0)) - offset
     except (OverflowError, ValueError):
         return 0.0
+
+
+def in_folder(item: ObjectInfo, parent: int) -> bool:
+    """Whether a listed object names `parent` as its folder. At the top level a device names 0
+    or ROOT: the fēnix 8 and the Edge 1050 name 0 in both listings, though the listings are
+    asked with ROOT."""
+    return item.parent in (0, ROOT) if parent == ROOT else item.parent == parent
+
+
+def joined(ordinary: list[ObjectInfo], garmins: list[ObjectInfo],
+           parent: int) -> tuple[list[ObjectInfo], int]:
+    """A folder's ordinary listing and Garmin's together, and how many objects of Garmin's
+    were left out because they name another folder than `parent`. An object of Garmin's that
+    the ordinary listing has too (the same handle, else the same name, else the same name in
+    another letter case) takes that ordinary object's place with its own handle and
+    description, but not hidden: the ordinary listing shows it. The rest of Garmin's follow
+    the ordinary objects, hidden. What one listing holds twice stays twice (a car navigator
+    may have two folders whose names differ only in letter case)."""
+    out = list(ordinary)
+    places: tuple[dict, dict, dict] = ({}, {}, {})  # by handle, by name, by name in any case
+    for i, item in enumerate(ordinary):
+        for place, key in zip(places, _keys(item), strict=True):
+            place.setdefault(key, []).append(i)
+    taken: set[int] = set()  # the ordinary objects an object of Garmin's already replaced
+    left_out = 0
+    for item in garmins:
+        if not in_folder(item, parent):
+            left_out += 1
+            continue
+        same = next((i for place, key in zip(places, _keys(item), strict=True)
+                     for i in place.get(key, ()) if i not in taken), None)
+        if same is None:
+            out.append(item)
+        else:
+            out[same] = replace(item, hidden=False)
+            taken.add(same)
+    return out, left_out
+
+
+def _keys(item: ObjectInfo) -> tuple:
+    return item.handle, item.name, item.name.casefold()
 
 
 # --- transport ---------------------------------------------------------------------------
@@ -666,6 +725,7 @@ class Session:
         self._broken = False  # the conversation is out of step; send nothing more
         self._empty = 0  # reads in a row that brought nothing
         self._listed: list[int] | None = None  # the operations the device lists, once asked
+        self.other_parent = 0  # objects Garmin's listing named in another folder, left out
 
     @property
     def broken(self) -> bool:
@@ -759,7 +819,8 @@ class Session:
                   data_in: Callable[[bytes], None] | None,
                   answer_ms: int | None = None) -> tuple[int, bytes, list[int]]:
         if self._broken:
-            raise PtpError(_("The connection to the device is out of step."))
+            raise PtpError(_("An earlier exchange with the device failed, so nothing more is "
+                             "sent to it."))
         if data_out is not None and data_out.size > MAX_OBJECT_SIZE:
             raise PtpError(_("The file is too large to send."))
         transaction, self._transaction = self._transaction, self._transaction + 1
@@ -787,7 +848,7 @@ class Session:
         while True:
             kind, code, answered, length = self._header()
             if answered != transaction or kind not in (DATA, RESPONSE):
-                raise PtpError(_("The device answered out of step."))
+                raise PtpError(_("The device's answer does not match the request."))
             if kind == DATA and data_in is not None:
                 self._stream(length - HEADER.size, data_in)
                 continue
@@ -816,7 +877,7 @@ class Session:
         self._fill(HEADER.size)
         length, kind, code, transaction = HEADER.unpack_from(self._buffer)
         if length < HEADER.size or length == 0xFFFFFFFF:
-            raise PtpError(_("The device answered out of step."))
+            raise PtpError(_("The device's answer does not match the request."))
         self._buffer = self._buffer[HEADER.size:]
         return kind, code, transaction, length
 
@@ -880,16 +941,17 @@ class Session:
         return struct.unpack_from("<Q", data, 14)[0] if len(data) >= 22 else None
 
     def storage_info(self, storage: int) -> StorageInfo:
-        """The size of the storage, its free space and its name (GetStorageInfo)."""
+        """The size of the storage, its free space, its name and its kind (GetStorageInfo)."""
         data, _answer = self._ok(GET_STORAGE_INFO, storage)
         if len(data) < 22:
             raise PtpError(_("The device sent an incomplete answer."))
+        kind, filesystem, access = struct.unpack_from("<HHH", data, 0)
         capacity, free = struct.unpack_from("<QQ", data, 6)
         try:
             description = read_string(data, 26)[0]
         except PtpError:
             description = ""  # a dataset cut after the sizes: they are what matters
-        return StorageInfo(capacity, free, description)
+        return StorageInfo(capacity, free, description, kind, filesystem, access)
 
     def info(self, handle: int, hidden: bool = False) -> ObjectInfo:
         data, _answer = self._ok(GET_OBJECT_INFO, handle)
@@ -910,7 +972,9 @@ class Session:
                      at_root: bool = False) -> list[ObjectInfo]:
         """Ordinary and hidden objects of a folder; just the ordinary ones on a device
         without Garmin's listing, and in the root unless `at_root` (a car navigator keeps its
-        hidden folder there; a watch was never seen using Garmin's listing in the root)."""
+        hidden folder there; a watch was never seen using Garmin's listing in the root). The
+        two listings are put together by `joined`; what Garmin's names in another folder is
+        left out and counted in `other_parent`."""
         found = self.children(storage, parent)
         if parent == ROOT and not at_root:
             return found
@@ -920,8 +984,9 @@ class Session:
             if e.code != OPERATION_NOT_SUPPORTED:
                 raise
             return found
-        known = {item.handle for item in found}
-        return found + [item for item in extra if item.handle not in known]
+        listed, left_out = joined(found, extra, parent)
+        self.other_parent += left_out
+        return listed
 
     def lookup(self, storage: int, path: str) -> ObjectInfo | None:
         """The object at a `/` path, matched case-insensitively like the rest of the

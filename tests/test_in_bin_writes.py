@@ -87,8 +87,9 @@ def test_a_list_that_cannot_be_put_back_is_deleted_and_said(iq_device):
     assert waiting(st) is None
     assert str(error.value) == (
         "The app list for the device could not be written (Cannot write GARMIN/APPS/IN.BIN: "
-        "the device is gone), nor the one that waited written back: it was deleted, so the "
-        "changes of the apps that waited for the device are lost. Make them again.")
+        "the device is gone), and the list that was waiting for the device could not be put "
+        "back either: it was deleted, so the app changes that were waiting for the device are "
+        "lost. Make them again.")
 
 
 def test_a_half_list_that_cannot_be_deleted_is_said_before_unplugging(iq_device):

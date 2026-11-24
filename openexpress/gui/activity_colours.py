@@ -136,7 +136,9 @@ def _draw_scale(_area, cr, width: int, height: int) -> None:
     cr.fill()
 
 
-def _plain_flow(**props) -> Gtk.FlowBox:
+def plain_flow(**props) -> Gtk.FlowBox:
+    """One or two children a line, nothing selected and no background under the pointer: only
+    the buttons in it have one."""
     flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, min_children_per_line=1,
                        max_children_per_line=2, **props)
     flow.add_css_class("oe-plain")
@@ -164,7 +166,7 @@ class TrackLegend(Gtk.Box):
         for widget in (self.low, bar, self.high):
             ends.append(widget)
         # The name and the ends packed to the left, the ends under the name when narrow.
-        self.scale = _plain_flow(column_spacing=10, row_spacing=4, halign=Gtk.Align.START,
+        self.scale = plain_flow(column_spacing=10, row_spacing=4, halign=Gtk.Align.START,
                                  valign=Gtk.Align.CENTER)
         for widget in (self.name, ends):
             self.scale.append(Gtk.FlowBoxChild(child=widget, focusable=False))
@@ -174,7 +176,7 @@ class TrackLegend(Gtk.Box):
         right = Gtk.Box(spacing=8, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
         right.append(label)
         right.append(self.switch)
-        row = _plain_flow(column_spacing=12, row_spacing=6)
+        row = plain_flow(column_spacing=12, row_spacing=6)
         row.append(Gtk.FlowBoxChild(child=self.scale, focusable=False, hexpand=True))
         row.append(Gtk.FlowBoxChild(child=right, focusable=False))
         self.append(row)

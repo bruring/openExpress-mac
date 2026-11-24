@@ -151,6 +151,33 @@ def _updates(copied: bool):
     return items
 
 
+def _hidden_inside_updates(writable=False):
+    """A watch's software, a map support file and several updates whose folders the watch hides
+    inside a folder that is seen, some of them among the components to reinstall: not installed
+    (the group says why once, each row in short, its button off), or `writable` through
+    openExpress's own session (as any other)."""
+    items = [_update("Made-up Watch Software Bundle", "24.20", "Garmin/GUPDATE.GSP", 61_800_000,
+                     system=True),
+             _update("Made-up Audio Prompt Bundle, extended voices", "2.18",
+                     "GARMIN/PROMPTS/prompt_bundle.hvm", 154_300_000),
+             _update("Made-up Speech Model", "3.10", "Garmin/ASR/Updates/m0000001.srd",
+                     12_400_000),
+             _update("Made-up Keyboard Model", "1.40", "Garmin/KBD/Updates/k0000001.bin",
+                     2_100_000),
+             _update("Map support file", "2.70", "Garmin/SID/D0000300.sid", 65_100),
+             _update("Made-up Font", "5.20", "Garmin/ExtData/f0000001.fnt", 3_600_000,
+                     reinstall=True, on_device=True),
+             _update("Made-up Activity Videos", "1.10", "Garmin/RemoteSW/v0000001.zvp",
+                     8_800_000, reinstall=True, on_device=True)]
+    for u, folder in zip(items[1:4], ("Garmin/Prompts", "Garmin/ASR/Updates",
+                                      "Garmin/KBD/Updates"), strict=True):
+        u.folder_hidden = folder
+    items[5].folder_hidden = "Garmin/ExtData"
+    for u in items:
+        u.folder_writable = writable and u.folder_hidden is not None
+    return items
+
+
 def _maps():
     from openexpress.maps import MapFile, UniversalMap
     from openexpress.ownmaps import Overview, OwnMap
@@ -187,8 +214,10 @@ def _apps():
         StoreApp,
     )
 
+    ids = (uuid.UUID(int=n) for n in range(1, 10))
+
     def store(name, kind, version):
-        return InstalledApp(app_id=uuid.uuid4(), app_type=kind, name=name, disabled=False,
+        return InstalledApp(app_id=next(ids), app_type=kind, name=name, disabled=False,
                             version=version, filename="ABCDEF12", size=265_493)
 
     weather = store("Weather Forecast & Radar Widget Pro", 2, 41)
@@ -200,7 +229,7 @@ def _apps():
                                  store("Spotify", 7, 73), weather, store("Face It", 3, 42),
                                  *built_in],
                            available_space=66_000_000, available_slots=27)
-    account = [StoreApp(uuid.uuid4(), "Garmin Coach Training Plans Companion",
+    account = [StoreApp(next(ids), "Garmin Coach Training Plans Companion",
                         "Garmin Ltd or its subsidiaries", "watch-app", 238_504, 3, "3.0.2",
                         False)]
     # The update asks for new permissions: the longest line of an app.
@@ -487,6 +516,10 @@ def _fill(win, page: str) -> str:
     elif page == "updates-older":
         win.session.device.software_version_str = "33.21"
         MainWindow.show_updates(win, _edge_reinstalls())
+    elif page == "updates-hidden-inside":
+        MainWindow.show_updates(win, _hidden_inside_updates())
+    elif page == "updates-hidden-writable":
+        MainWindow.show_updates(win, _hidden_inside_updates(writable=True))
     elif key == "updates":
         MainWindow.show_updates(win, _updates(copied="copied" in page), beta=True)
     elif page == "maps-none":
@@ -565,10 +598,11 @@ def _iterate(seconds):
 
 
 @pytest.fixture
-def narrow_window(monkeypatch):
+def narrow_window(monkeypatch, clock):
     """A function that gives the real window in the language asked for, folded (narrower than
     its breakpoint) unless a wider `width` is asked for; nothing is detected, loaded or asked.
-    GTK's settings and the language are put back afterwards."""
+    The window's words of time are told by the made-up clock. GTK's settings and the language
+    are put back afterwards."""
     from gi.repository import Gtk
 
     from openexpress import i18n
@@ -1143,7 +1177,7 @@ def test_captions_break_only_where_they_should(narrow_window, language, page):
 
 
 @pytest.mark.parametrize("language", ["en", "pl"])
-def test_the_line_of_the_last_sync_keeps_its_separators_too(language):
+def test_the_line_of_the_last_sync_keeps_its_separators_too(language, clock):
     """When the last sync was and its numbers, joined in the command line's words (service):
     in the window "·" stays with the part before it."""
     from openexpress import i18n
@@ -1480,14 +1514,14 @@ pytestmark = [pytest.mark.needs_display,
 
 
 @pytest.mark.parametrize("language", ["en", "pl"])
-def test_the_page_from_the_records_fits_the_narrowest_window(narrow_window, language):
+def test_the_page_from_the_records_fits_the_narrowest_window(narrow_window, language, clock):
     from openexpress import status
     from openexpress.crashes import Crash
     from openexpress.gui import status_page
 
     win = narrow_window(language)
     win.set_default_size(NARROWEST, 800)
-    now = datetime.now()
+    now = clock.current
     crashes = [Crash(now - timedelta(days=2), software="21.18", error="0x003",
                      program_counter="0x10000abc", screen="2301", sources={"device log"})]
     facts = status.Facts(
@@ -1590,10 +1624,10 @@ NAVIGATOR_WORDS = {
     "updates-navigator": {
         "en": "openExpress cannot see the folder .System, where this device keeps its software, so "
               "it installs nothing there. Some devices, such as car navigators, hide it from the "
-              "ordinary USB connection.",
+              "file manager.",
         "pl": "openExpress nie widzi folderu .System, w\u00a0którym to urządzenie trzyma swoje "
               "oprogramowanie, więc niczego tam nie instaluje. Niektóre urządzenia, np. "
-              "nawigacje samochodowe, ukrywają go przed zwykłym połączeniem USB."},
+              "nawigacje samochodowe, ukrywają go przed menedżerem plików."},
     "maps-navigator": {
         "en": "Cannot be read: openExpress cannot see the folder of its files on this device",
         "pl": "Nie można odczytać: openExpress nie widzi na tym urządzeniu folderu jej plików"},
@@ -1655,6 +1689,202 @@ def test_a_navigator_page_says_why_nothing_is_done(narrow_window, language, widt
     if NAVIGATOR_SHOTS:
         window_picture(win, Path(NAVIGATOR_SHOTS)
                        / f"{page}-{language}-{'360' if width == NARROWEST else 'wide'}.png")
+
+
+HIDDEN_INSIDE_SHOTS = os.environ.get("OPENEXPRESS_HIDDEN_INSIDE_SHOTS")
+HIDDEN_INSIDE_LINE = {"en": "Cannot be installed without a direct USB connection",
+                      "pl": "Nie można zainstalować bez bezpośredniego połączenia USB"}
+HIDDEN_INSIDE_WHY = {
+    "en": ("and openExpress cannot open a direct USB connection to this device (the Flatpak "
+           "version needs access to USB devices for it, see the README). The others install as "
+           "usual."),
+    "pl": ("a\u00a0openExpress nie może otworzyć bezpośredniego połączenia USB z\u00a0tym urządzeniem "
+           "(wersja Flatpak potrzebuje do tego dostępu do urządzeń USB, patrz README). Pozostałe "
+           "instalują się normalnie.")}
+HIDDEN_INSIDE_GROUPS = {
+    "en": [("3 of these cannot be installed: the device keeps them in folders it hides from the "
+            "file manager, " + HIDDEN_INSIDE_WHY["en"]),
+           ("1 of these cannot be installed: the device keeps it in a folder it hides from the "
+            "file manager, " + HIDDEN_INSIDE_WHY["en"])],
+    "pl": [("3 z\u00a0nich nie można zainstalować: urządzenie trzyma je w\u00a0folderach ukrytych "
+            "przed menedżerem plików, " + HIDDEN_INSIDE_WHY["pl"]),
+           ("1 z\u00a0nich nie można zainstalować: urządzenie trzyma ją w\u00a0folderze ukrytym przed "
+            "menedżerem plików, " + HIDDEN_INSIDE_WHY["pl"])]}
+NOT_ALL = {"en": "1 update was not installed:", "pl": "Nie zainstalowano 1 aktualizacji:"}
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, 900], ids=["360", "900"])
+def test_updates_the_device_hides_say_why_once_with_buttons_off(narrow_window, language, width):
+    """Rows of updates whose folders the device hides inside a folder that is seen: their group
+    says why once, each row in short, its button there and off; Install All for the others. In
+    the narrowest window and a wide one. With OPENEXPRESS_HIDDEN_INSIDE_SHOTS, a picture of the
+    page and of the components to reinstall expanded."""
+    from pathlib import Path
+
+    from gi.repository import Adw, Gtk
+
+    win = narrow_window(language, width=width)
+    key = _fill(win, "updates-hidden-inside")
+    win.navigation.set_animate_transitions(False)
+    win.navigation.push(win.device_view)
+    win.select_section(key)
+    _iterate(0.3)
+    widgets = list(descendants(win.sections[key].stack))
+    groups = [w.get_description() for w in widgets
+              if isinstance(w, Adw.PreferencesGroup) and w.get_description()]
+    assert groups == HIDDEN_INSIDE_GROUPS[language]
+    hidden = {"Made-up Audio Prompt Bundle, extended voices", "Made-up Speech Model",
+              "Made-up Keyboard Model", "Made-up Font"}
+    updates = {u.title for u in _hidden_inside_updates() if not u.is_system}
+    rows = {w.get_title(): w for w in widgets
+            if isinstance(w, Adw.ActionRow) and w.get_title() in updates}
+    assert set(rows) == updates
+    for title, row in rows.items():
+        buttons = [b for b in descendants(row) if isinstance(b, Gtk.Button)]
+        said = row.get_subtitle().splitlines()[-1] == HIDDEN_INSIDE_LINE[language]
+        assert (said, [b.get_sensitive() for b in buttons]) == (
+            (True, [False]) if title in hidden else (False, [True])), title
+    win.set_busy(True)  # a task's end turns on its buttons, never these
+    win.set_busy(False)
+    _iterate(0.3)
+    assert [b.get_sensitive() for t in hidden for b in descendants(rows[t])
+            if isinstance(b, Gtk.Button)] == [False] * len(hidden)
+    buttons = {w.get_label() for w in widgets if isinstance(w, Gtk.Button) and w.get_mapped()}
+    assert {"Install All", "Zainstaluj wszystkie"} & buttons
+    if width == NARROWEST:
+        assert _min_width(win.sections[key].stack) <= NARROWEST
+    if HIDDEN_INSIDE_SHOTS:
+        window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"wiersz-{language}-{width}.png")
+        (expander,) = [w for w in widgets if isinstance(w, Adw.ExpanderRow)]
+        expander.set_expanded(True)
+        _iterate(0.3)
+        for scrolled in [w for w in descendants(win.sections[key].stack)
+                         if isinstance(w, Gtk.ScrolledWindow)]:
+            bar = scrolled.get_vadjustment()
+            bar.set_value(bar.get_upper() - bar.get_page_size())  # down to the components
+        _iterate(0.3)
+        window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"komponenty-{language}-{width}.png")
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, 900], ids=["360", "900"])
+def test_done_says_what_was_not_installed_and_why(narrow_window, language, width):
+    """The message after Install All: the device's software copied, a file the device refused
+    as it was written not: Done, the steps, the one not installed and why; it fits the narrowest
+    window. With OPENEXPRESS_HIDDEN_INSIDE_SHOTS, a picture."""
+    import types
+    from pathlib import Path
+
+    from gi.repository import Adw, Gtk
+
+    from openexpress import updates
+    from openexpress.gui.updates_page import tell_update_done
+
+    win = narrow_window(language, width=width)
+    key = _fill(win, "updates-hidden-inside")
+    win.navigation.set_animate_transitions(False)
+    win.navigation.push(win.device_view)
+    win.select_section(key)
+    from openexpress.i18n import _
+
+    items = _hidden_inside_updates()
+    # The device refused one file as it was written (the error's words, in the language of the
+    # session): the software was written all the same.
+    (sid,) = [u for u in items if u.title == "Map support file"]
+    report = updates.InstallReport(written=[items[0]])
+    report.failed.append((sid, _("Cannot create the folder {path}").format(
+        path="Garmin/SID") + ": made-up refusal"))
+    tell_update_done(win, types.SimpleNamespace(device=win.session.device), report)
+    _iterate(0.5)
+    dialog = win.get_visible_dialog()
+    assert isinstance(dialog, Adw.AlertDialog)
+    assert NOT_ALL[language] in dialog.get_body()
+    if width == NARROWEST:
+        assert dialog.measure(Gtk.Orientation.HORIZONTAL, -1)[0] <= NARROWEST
+    if HIDDEN_INSIDE_SHOTS:
+        window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"gotowe-{language}-{width}.png")
+    dialog.force_close()
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, 900], ids=["360", "900"])
+def test_updates_written_through_its_own_session_are_as_any_other_and_told(narrow_window,
+                                                                          language, width):
+    """Updates whose folders the device hides, written through openExpress's own session: no note
+    in their group, their rows as any other with Install on; the steps of such an install, told
+    in the window, fit the narrowest one. With OPENEXPRESS_HIDDEN_INSIDE_SHOTS, pictures of the
+    page and of each step."""
+    from pathlib import Path
+
+    from gi.repository import Adw, Gtk
+
+    from openexpress import hidden_folders
+    from openexpress.i18n import _
+    from openexpress.progress import Step, checking_text, copying_text
+
+    win = narrow_window(language, width=width)
+    key = _fill(win, "updates-hidden-writable")
+    win.navigation.set_animate_transitions(False)
+    win.navigation.push(win.device_view)
+    win.select_section(key)
+    _iterate(0.3)
+    widgets = list(descendants(win.sections[key].stack))
+    assert not [w for w in widgets if isinstance(w, Adw.PreferencesGroup) and w.get_description()]
+    rows = {w.get_title(): w for w in widgets if isinstance(w, Adw.ActionRow)}
+    for title in ("Made-up Audio Prompt Bundle, extended voices", "Made-up Speech Model"):
+        assert [b.get_sensitive() for b in descendants(rows[title])
+                if isinstance(b, Gtk.Button)] == [True], title
+    if HIDDEN_INSIDE_SHOTS:
+        window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"sesja-{language}-{width}.png")
+    name, mb = "Made-up Audio Prompt Bundle, extended voices", 1_000_000
+    steps = [hidden_folders.probe_step_text("GARMIN/Prompts"),
+             Step(hidden_folders.keeping_step_text(name), 70 * mb, 147 * mb, in_bytes=True),
+             Step(copying_text(name), 90 * mb, 154 * mb, in_bytes=True),
+             Step(checking_text(name), 40 * mb, 154 * mb, in_bytes=True)]
+    win.set_busy(True, _("Install"), device=True)
+    for n, step in enumerate(steps, 1):
+        win._show_progress(step)
+        _iterate(0.2)
+        # One line, as every step of the bar: a long name ends in "…" in the narrowest window.
+        assert win.progress_label.get_text() == str(step)
+        if width == NARROWEST:
+            assert 0 < win.get_width() <= NARROWEST
+        if HIDDEN_INSIDE_SHOTS:
+            window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"krok{n}-{language}-{width}.png")
+    win.set_busy(False)
+
+
+@pytest.mark.parametrize("language", ["en", "pl"])
+@pytest.mark.parametrize("width", [NARROWEST, 900], ids=["360", "900"])
+def test_the_check_of_a_file_on_the_device_says_how_far_it_is(narrow_window, language, width):
+    """While the Updates page reads a file on the device whole to compare it with the server's,
+    the bar says so and how far it is, in the narrowest window too. With
+    OPENEXPRESS_HIDDEN_INSIDE_SHOTS, a picture."""
+    from pathlib import Path
+
+    from openexpress import updates
+    from openexpress.i18n import _
+    from openexpress.progress import Step
+
+    win = narrow_window(language, width=width)
+    key = _fill(win, "updates")
+    win.navigation.set_animate_transitions(False)
+    win.navigation.push(win.device_view)
+    win.select_section(key)
+    win.sections[key].show("loading")
+    win.set_busy(True, _("Checking for Updates…"), device=True, in_page=True)
+    for done, total in ((154_300_000, 154_300_000), (12_300_000, 61_800_000)):
+        step = Step(updates.checking_file_text(), done, total, in_bytes=True)
+        win._show_progress(step)
+        _iterate(0.3)
+        label = win.progress_label  # the numbers whole, the largest file too
+        assert label.get_text() == str(step) and not label.get_layout().is_ellipsized(), str(step)
+    if width == NARROWEST:
+        assert 0 < win.get_width() <= NARROWEST
+    if HIDDEN_INSIDE_SHOTS:
+        window_picture(win, Path(HIDDEN_INSIDE_SHOTS) / f"sprawdzanie-{language}-{width}.png")
+    win.set_busy(False)
 
 
 # What the row of a component Garmin offers older than the device's says, and whether it has

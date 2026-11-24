@@ -7,7 +7,7 @@ import pytest
 from fakes import RunNow, step_words
 from fakes import window as stand_in
 
-from openexpress import ciq, music, proto
+from openexpress import ciq, errors, music, proto
 from openexpress.device.storage import DeviceError, LocalStorage
 from openexpress.device.xmldevice import parse
 
@@ -377,7 +377,7 @@ def test_window_playlist_summary(iq_device, library):
     text = MainWindow._playlist_summary(plan)
     assert text.splitlines() == [
         "3 tracks",
-        "2 files to copy (306\u00a0B), 0 already on the device",
+        "2 files to copy (306\u00a0B)",
         "",
         "2 tracks cannot be added:",
         "• lossless.flac (format not supported by the device)",
@@ -619,7 +619,7 @@ def test_cli_install_dry_run_shows_the_app_list(iq_device, device_root, apps_cli
     out = capsys.readouterr().out.splitlines()
     assert out[1:] == [
         "App list to be written (IN.BIN): 3 entries; the device lists 2 (OUT.BIN)",
-        "  every app on the device is kept, in the same order and with the same flags",
+        "  every app on the device is kept as it is, in the same order",
         "  new: Face It (watch face), added as inactive",
         "Before any change, a copy of the app list of the device is made.",
         "Dry run: nothing was changed. Add --apply.",
@@ -1288,7 +1288,7 @@ def test_the_apps_page_in_a_sandbox_reads_the_app_list_once_more(hidden_apps, mo
     assert st.read_paths.count(OUT_BIN) == 2
 
 
-def test_no_ptp_session_keeps_the_old_behaviour(hidden_apps, monkeypatch):
+def test_without_a_ptp_session_the_app_is_only_queued(hidden_apps, monkeypatch):
     """E.g. in a Flatpak sandbox: the folder is tried, refused, and the app only queued."""
     from openexpress.device.storage import DeviceError
 
@@ -1611,7 +1611,7 @@ def test_cli_dry_run_announces_the_direct_connection(hidden_apps, apps_cli, monk
     monkeypatch.setattr(cli, "open_device", lambda args: (st, _dev))
     assert main(["--path", str(st.root), "apps", "install", "Face It"]) == 0
     out = capsys.readouterr().out
-    assert "does not show the app folder GARMIN/APPS/MEDIA" in out
+    assert "the app folder GARMIN/APPS/MEDIA is hidden from the file manager" in out
     assert "direct USB connection" in out and "Dry run" in out
     assert fake.operations == [] and st.sessions == 0 and FakeStore.queued == []
 
@@ -1751,7 +1751,7 @@ def test_hidden_app_is_removed_like_express_does(hidden_spot):
     assert ciq.files_on_device(dev, st, app) == [] and ciq.removal_way(dev, st, app) == ciq.DIRECT
     assert ciq.remove(dev, st, app) == ["GARMIN/APPS/MEDIA/0A1B2C3D.PRG"]
     assert fake.names("GARMIN/Apps/Media") == ["DADE7E4.PRG"]
-    # The app list: the same entries in the same order with the same flags, minus the app.
+    # The app list: the same entries in the same order with the same settings, minus the app.
     assert [(p[0], p[1], p[2]) for p in fake_in_bin(fake)] == [
         (STORE_ID, 1, False), (PRELOADED, 8, True)]
     # The file is deleted first, the list written after it; then the device is mounted again.
@@ -2071,7 +2071,7 @@ TIMED_OUT = "Cannot mount the device: the device did not answer in time"  # as _
 def test_an_error_ends_its_sentence_before_the_next_one(error, expected):
     from openexpress.device.storage import DeviceError
 
-    assert ciq._sentence(DeviceError(error)) == expected
+    assert errors.sentence(DeviceError(error)) == expected
 
 
 def test_the_leftovers_come_in_a_sentence_of_their_own():
@@ -2160,7 +2160,7 @@ def test_cli_removes_a_hidden_app(hidden_spot, apps_cli, monkeypatch, capsys):
                       "GARMIN/APPS/SETTINGS/0A1B2C3D.SET")
     assert out[3:] == [
         "App list to be written (IN.BIN): 2 entries; the device lists 3 (OUT.BIN)",
-        "  every other app on the device is kept, in the same order and with the same flags",
+        "  every other app on the device is kept as it is, in the same order",
         "  to be removed: Face It (watch face)",
         "Before any change, a copy of the app list of the device is made.",
         "Dry run: nothing was changed. Add --apply.",
@@ -2551,7 +2551,7 @@ def test_cli_apps_order(order_device, apps_cli, monkeypatch, capsys):
     assert out[0] == "Order of the apps from the copy GARMIN-APPS 2026-01-02 (03.04.05)"
     assert out[-4:] == [
         "App list to be written (IN.BIN): 7 entries; the device lists 7 (OUT.BIN)",
-        "  the same apps with the same flags; only the order changes",
+        "  the same apps, each as it is now; only the order changes",
         "Before any change, a copy of the app list of the device is made.",
         "Dry run: nothing was changed. Add --apply."]
     assert not (st.root / "GARMIN/APPS/IN.BIN").exists()
@@ -2955,7 +2955,7 @@ def test_order_summary_shows_the_first_ten_changes(order_device):
         "  3: Calendar (now: Music)", "  4: Maps (now: Calendar)", "  5: Music (now: Maps)",
         "  6: Tides (now: Moon)", "  7: Moon (now: Tides)",
         "",
-        "The same apps with the same flags; only the order changes.",
+        "The same apps, each as it is now; only the order changes.",
         "Before any change, a copy of the app list of the device is made."]
     many = ciq.OrderPlan(entries=plan.entries, moved=plan.moved * 5, only_in_copy=[],
                          only_on_device=[plan.entries[0]])
@@ -3228,7 +3228,7 @@ def test_cli_update_of_a_hidden_app(hidden_update, apps_cli, monkeypatch, capsys
     assert out.splitlines()[0].startswith("Update Face It")
     assert "direct USB connection" in out and "cannot update" not in out
     assert "App list to be written (IN.BIN): 3 entries; the device lists 3 (OUT.BIN)" in out
-    assert "every app on the device is kept, in the same order and with the same flags" in out
+    assert "every app on the device is kept as it is, in the same order" in out
     assert "Before any change, a copy of the app list of the device is made." in out
     assert fake.operations == [] and st.sessions == 0
 
@@ -3767,7 +3767,7 @@ def test_music_add_dry_run_marks_the_file_it_would_replace(iq_device, device_roo
     argv = ["--path", str(device_root), "music", "add", *map(str, songs)]
     assert main(argv) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "Found 2 playable files; 2 to copy (306 B), 0 already on the device.",
+        "Found 2 playable files; 2 to copy (306 B).",
         f"  + {ONE}",
         f"  ~ {TWO}  (replaces the file on the device: 150 B → 203 B)",
         "1 file on the device will be replaced.",
@@ -3808,8 +3808,27 @@ def test_music_add_without_a_replaced_file_says_nothing_of_replacing(iq_device, 
 
     assert main(["--path", str(device_root), "music", "add", *map(str, songs)]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "Found 2 playable files; 2 to copy (306 B), 0 already on the device.",
+        "Found 2 playable files; 2 to copy (306 B).",
         f"  + {ONE}", f"  + {TWO}", "Dry run: nothing was changed. Add --apply."]
+
+
+@pytest.mark.parametrize(("language", "there", "line"), [
+    ("en", 0, "Found 2 playable files; 2 to copy (306 B)."),
+    ("en", 1, "Found 2 playable files; 1 to copy (203 B), 1 already on the device."),
+    ("pl", 0, "Znaleziono 2 pliki do odtwarzania; do skopiowania: 2 (306 B)."),
+    ("pl", 1, "Znaleziono 2 pliki do odtwarzania; do skopiowania: 1 (203 B), już na urządzeniu: 1.")])
+def test_music_add_says_what_is_already_there_only_when_something_is(iq_device, device_root,
+                                                                    songs, capsys, language,
+                                                                    there, line):
+    """As the window's question: no "0 already on the device"; with some there, how many are."""
+    from openexpress.cli import main
+
+    st, _dev = iq_device
+    if there:
+        on_device(st, ONE, 103)  # the same size: already there
+    assert main(["--path", str(device_root), "--lang", language, "music", "add",
+                 *map(str, songs)]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == line
 
 
 def test_replaced_files_are_counted_also_when_the_list_is_cut(iq_device, device_root, tmp_path,
@@ -3846,7 +3865,7 @@ def test_window_says_before_copying_that_files_are_replaced(iq_device, songs, li
 
     st, dev = iq_device
     tracks = music.scan(songs, dev)
-    plain = "306\u00a0B will be copied to the device (0 files already there)."
+    plain = "306\u00a0B will be copied to the device."
     assert MainWindow._copy_summary(music.plan_copy(tracks, dev, st)) == plain
     assert "replaced" not in MainWindow._playlist_summary(music.plan_playlist(library, dev, st))
 
@@ -3854,8 +3873,42 @@ def test_window_says_before_copying_that_files_are_replaced(iq_device, songs, li
     assert MainWindow._copy_summary(music.plan_copy(tracks, dev, st)) == (
         plain + "\n\n1 file on the device will be replaced.")
     lines = MainWindow._playlist_summary(music.plan_playlist(library, dev, st)).splitlines()
-    assert lines[:3] == ["3 tracks", "2 files to copy (306\u00a0B), 0 already on the device",
+    assert lines[:3] == ["3 tracks", "2 files to copy (306\u00a0B)",
                          "1 file on the device will be replaced."]
+
+
+@pytest.mark.parametrize(("there", "copy", "playlist"), [
+    (0, "306\u00a0B will be copied to the device.", "2 files to copy (306\u00a0B)"),
+    (1, "203\u00a0B will be copied to the device (1 file already there).",
+     "1 file to copy (203\u00a0B), 1 already on the device")], ids=["none there", "one there"])
+def test_the_questions_say_what_is_already_there_only_when_something_is(iq_device, songs,
+                                                                        library, there, copy,
+                                                                        playlist):
+    """With none of the music on the device, no "(0 files already there)"; with some, how
+    many."""
+    from openexpress.gui.app import MainWindow
+
+    st, dev = iq_device
+    if there:
+        on_device(st, ONE, 103)  # the same size: already there
+    assert MainWindow._copy_summary(music.plan_copy(music.scan(songs, dev), dev, st)) == copy
+    assert MainWindow._playlist_summary(
+        music.plan_playlist(library, dev, st)).splitlines()[1] == playlist
+
+
+def test_the_questions_with_nothing_there_in_polish(iq_device, songs, library):
+    from openexpress import i18n
+    from openexpress.gui.app import MainWindow
+
+    st, dev = iq_device
+    i18n.setup("pl")
+    try:
+        copy = MainWindow._copy_summary(music.plan_copy(music.scan(songs, dev), dev, st))
+        playlist = MainWindow._playlist_summary(music.plan_playlist(library, dev, st))
+    finally:
+        i18n.setup("en")
+    assert copy == "Na urządzenie zostanie skopiowane 306\u00a0B."
+    assert playlist.splitlines()[1] == "Do skopiowania: 2 pliki (306\u00a0B)"
 
 
 def test_replaced_files_in_polish(iq_device, songs):
@@ -3906,3 +3959,18 @@ def test_cli_update_through_the_mounted_storage_announces_no_app_list(iq_device,
     assert main(["--path", str(device_root), "apps", "update", "--apply"]) == 0
     assert st.resolve("GARMIN/APPS/IN.BIN") is None
     assert set(before) < set(apps_files(st))  # the new file next to the old one
+
+
+@pytest.mark.parametrize("english, polish", [
+    ("The same apps, each as it is now; only the order changes.", "Te same aplikacje, każda bez zmian; zmienia się tylko kolejność."),
+    ("the same apps, each as it is now; only the order changes", "te same aplikacje, każda bez zmian; zmienia się tylko kolejność"),
+    ("every other app on the device is kept as it is, in the same order", "każda inna aplikacja z\u00a0urządzenia zostaje bez zmian, w\u00a0tej samej kolejności"),
+    ("every app on the device is kept as it is, in the same order", "każda aplikacja z\u00a0urządzenia zostaje bez zmian, w\u00a0tej samej kolejności"),
+])
+def test_the_app_list_stays_as_it_is_in_polish(english, polish):
+    from fakes import in_language
+
+    from openexpress.i18n import _
+
+    with in_language("pl"):
+        assert _(english) == polish

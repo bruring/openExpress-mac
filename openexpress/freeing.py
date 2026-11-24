@@ -13,7 +13,6 @@ What can be freed is told by one function, plan(), for the page and the command 
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import posixpath
 import re
@@ -23,6 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from openexpress import applog, diagnostics, paths
+from openexpress.device import whole_reads
 from openexpress.device.storage import MAIN_FOLDERS, DeviceError, DeviceNotResponding, Storage
 from openexpress.errors import UserFacingError
 from openexpress.i18n import _
@@ -189,7 +189,7 @@ def _changed() -> ListChanged:
 
 def _copy(storage: Storage, dumps: list[Dump], where: Path, freed: Freed, progress,
           copies: dict[str, Path]) -> list[Dump]:
-    """Copy `dumps` into `where`, each checked (size and SHA-256 of the copy read back);
+    """Copy `dumps` into `where`, each checked (its size, and the copy read back);
     returns those copied, each copy's file in `copies`. A failed or wrong copy is not kept, and
     its dump is not removed."""
     # TRANSLATORS: a step of copying the memory dumps ("… · 1 of 3")
@@ -204,7 +204,7 @@ def _copy(storage: Storage, dumps: list[Dump], where: Path, freed: Freed, progre
         names.add(name.casefold())
         target = where / name
         try:
-            data = storage.read(path)
+            data = whole_reads.whole_file(storage, path, size)
             paths.write_private(target, data)
             whole = target.read_bytes()
         except DeviceNotResponding:
@@ -214,7 +214,7 @@ def _copy(storage: Storage, dumps: list[Dump], where: Path, freed: Freed, progre
             target.unlink(missing_ok=True)
             freed.copy_failed.append(path)
             continue
-        if len(data) != size or hashlib.sha256(whole).digest() != hashlib.sha256(data).digest():
+        if len(data) != size or whole != data:
             log.warning("freeing: the copy of a memory dump does not match it")
             target.unlink(missing_ok=True)
             freed.copy_failed.append(path)
@@ -265,8 +265,7 @@ def _new_removal_folder(unit_id: int, test_drive: bool) -> Path:
     where = removed_folder(unit_id, test_drive) / (
         f"{number:04d} {datetime.now().strftime(diagnostics.STAMP)}")
     for folder in (where.parent.parent, where.parent, where):
-        paths.make_dir(folder)
-        folder.chmod(0o700)
+        paths.make_private_dir(folder)
     return where
 
 

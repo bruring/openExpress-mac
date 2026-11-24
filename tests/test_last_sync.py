@@ -58,8 +58,7 @@ ROWS = [
 ]
 
 
-@pytest.mark.parametrize(("data", "english", "polish"), ROWS, ids=[r[1] for r in ROWS])
-def test_every_row_in_english_and_polish(data, english, polish):
+def _in_english_and_polish(data, english, polish):
     """The words of the command line and the notification (plain spaces), and the row of the
     window (when, then the same words; a hard space before "·")."""
     from datetime import datetime
@@ -76,6 +75,11 @@ def test_every_row_in_english_and_polish(data, english, polish):
                 f"{when} · {words}".replace(" · ", "\u00a0· ")), language
         finally:
             i18n.setup("en")
+
+
+@pytest.mark.parametrize(("data", "english", "polish"), ROWS, ids=[r[1] for r in ROWS])
+def test_every_row_in_english_and_polish(data, english, polish):
+    _in_english_and_polish(data, english, polish)
 
 
 def _blocked(reason, received=0):
@@ -105,7 +109,7 @@ BLOCKED_ROWS = [
 
 @pytest.mark.parametrize(("data", "english", "polish"), BLOCKED_ROWS, ids=[r[1] for r in BLOCKED_ROWS])
 def test_every_row_of_a_sync_that_uploaded_nothing(data, english, polish):
-    test_every_row_in_english_and_polish(data, english, polish)
+    _in_english_and_polish(data, english, polish)
 
 
 @pytest.mark.parametrize(("reason", "english", "polish"), [
@@ -405,7 +409,8 @@ def test_names_for_the_training_status_primary_device_and_coach_files():
     finally:
         i18n.setup("en")
     assert line == ("Pliki z\u00a0urządzenia: dziennik zmian ustawień, dane stanu wytrenowania, dane "
-                    "urządzenia głównego, plan Garmin Coach ×2, inne dane (FIT_TYPE_70)")
+                    "podstawowego urządzenia treningowego, plan Garmin Coach ×2, inne dane "
+                    "(FIT_TYPE_70)")
 
 
 # --- each device keeps its own last sync -----------------------------------------------------

@@ -15,7 +15,7 @@ import os
 import posixpath
 import shutil
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
@@ -35,8 +35,10 @@ class DeviceError(UserFacingError):
 
 
 class CopyNotStarted(DeviceError):
-    """A write that failed before anything on the device was touched (e.g. the copy command
-    could not be started): the file under the name, if any, is as it was."""
+    """A copy that failed before it began. A write before anything on the device was touched
+    (e.g. the copy command could not be started): the file under the name, if any, is as it
+    was. A copy from the device before its first byte: the file is read as a stream instead
+    (whole_reads)."""
 
 
 class RemountFailed(DeviceError):
@@ -44,6 +46,13 @@ class RemountFailed(DeviceError):
     itself to unplug the device and plug it in again."""
 
     says_replug = False
+
+
+class DeviceBusy(DeviceError):
+    """The device was not unmounted for a session of our own: gvfs refused it as busy (an
+    operation on the device was under way, a read or a write), or this process's own
+    operations on it were still under way. Nothing was cut short and the device stays
+    mounted: a later session may find it free."""
 
 
 class DeviceNotResponding(DeviceError):
@@ -120,11 +129,28 @@ class Storage(ABC):
     # yet (openexpress.music refuses to write there instead of creating its folder here); a
     # device with one storage (most of them) keeps this empty.
     other_storages: tuple[str, ...] = ()
+    # The device's other storages themselves, opened beside this one (mac_storage, gio_storage),
+    # each with its name as the device gives it (`description`) and whether the device says it
+    # can be taken out (`removable`; None: not told): a memory card among them is found by
+    # openexpress.device.card. A device with one storage keeps this empty.
+    others: tuple[Storage, ...] = ()
+    description = ""
+    removable: bool | None = None
+    # The device's memory card in the computer's card reader, standing in for the card over MTP
+    # for an install or a move (openexpress.device.card.reader_card); `in_reader` on that storage.
+    card_volume: Storage | None = None
+    in_reader = False
     # Whether write_file keeps the file it replaces until the new one is whole (a temporary
     # copy renamed at the end), so both have to fit for a while: what the space checks count.
     # Over MTP the old file is deleted before the new one is sent. (What a failed write
     # leaves behind is cleaned up by the storage itself: _discard_partial.)
     replaces_atomically = False
+
+    def _in_use(self):
+        """Held for the whole of an operation on the device (a write with its check counts as
+        one), so that a session of our own never takes the device in the middle of it: over
+        MTP (gio_storage), elsewhere nothing to hold."""
+        return nullcontext()
 
     @abstractmethod
     def _list(self, real_path: str) -> list[Entry]: ...
@@ -241,10 +267,16 @@ class Storage(ABC):
         except DeviceError:
             return None
 
-    def read_at(self, real_path: str) -> bytes:
+    def read_at(self, real_path: str, told=None) -> bytes:
         """The file at this real path (in its letter case, as listed before), not looked
-        for again."""
-        return self._read(real_path)
+        for again; `told(done, size)` as it comes, where the storage reads it in pieces."""
+        return self._read_told(real_path, told)
+
+    def _read_told(self, real_path: str, told) -> bytes:
+        data = self._read(real_path)
+        if told is not None:
+            told(len(data), len(data))
+        return data
 
     def listdir(self, path: str) -> list[Entry]:
         real = self.resolve(path)
@@ -292,6 +324,27 @@ class Storage(ABC):
     def _read_start(self, real_path: str, count: int) -> bytes:
         return self._read(real_path)[:count]
 
+    def copy_out(self, path: str, dest: Path, told=None) -> int:
+        """The file at `path` copied to `dest` on this computer, never held whole where the
+        storage can stream it (over MTP, as the device sends it); `told(done, total)` as the
+        bytes come. The bytes copied; `dest` is removed when the copy fails."""
+        real = self.resolve(path, strict=True)
+        if real is None:
+            raise DeviceError(_("File not found on the device: {path}").format(path=path))
+        dest = Path(dest)
+        try:
+            return self._copy_out(real, dest, told)
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
+
+    def _copy_out(self, real_path: str, dest: Path, told=None) -> int:
+        data = self._read(real_path)
+        dest.write_bytes(data)
+        if told is not None:
+            told(len(data), len(data))
+        return len(data)
+
     def _target(self, path: str) -> str:
         parent, name = _split_file_path(path)
         real_parent = self._ensure_dir(parent)
@@ -306,15 +359,16 @@ class Storage(ABC):
         the storage cleans up what the write left under the name, as write_file does
         (_discard_partial): never half a file; the old file stays when the write never
         started (CopyNotStarted, DeviceNotResponding)."""
-        real = self._target(path)
-        try:
-            self._write(real, data)
-        except (CopyNotStarted, DeviceNotResponding):
-            raise
-        except BaseException:
-            self._discard_partial(real)
-            raise
-        return real
+        with self._in_use():
+            real = self._target(path)
+            try:
+                self._write(real, data)
+            except (CopyNotStarted, DeviceNotResponding):
+                raise
+            except BaseException:
+                self._discard_partial(real)
+                raise
+            return real
 
     def write_file(self, path: str, local: Path, progress=None, keep_partial: bool = False) -> str:
         """Stream a local file to the device (large map/firmware files). After a failure the
@@ -323,24 +377,26 @@ class Storage(ABC):
         a copy has no time limit, so the device stopped responding before it, and a clean-up
         would wait on it) or `keep_partial` (the caller's to keep or remove: a file other maps
         use, never deleted, or an own map, removed and said by the caller)."""
-        real = self._target(path)
-        try:
-            self._write_file(real, Path(local), progress)
-        except (CopyNotStarted, DeviceNotResponding):
-            raise
-        except BaseException:
-            if not keep_partial:
-                self._discard_partial(real)
-            raise
-        return real
+        with self._in_use():
+            real = self._target(path)
+            try:
+                self._write_file(real, Path(local), progress)
+            except (CopyNotStarted, DeviceNotResponding):
+                raise
+            except BaseException:
+                if not keep_partial:
+                    self._discard_partial(real)
+                raise
+            return real
 
     def write_checked(self, path: str, data: bytes, *, error: type[Exception] = DeviceError) -> str:
         """write, then the size of the file on the device checked: another size (or one not
         known) deletes what was written and raises `error` (the error class of the caller,
         e.g. CiqError). Returns the real path."""
-        real = self.write(path, data)
-        self._check_written(real, len(data), error, keep=False)
-        return real
+        with self._in_use():
+            real = self.write(path, data)
+            self._check_written(real, len(data), error, keep=False)
+            return real
 
     def write_file_checked(self, path: str, local: Path, progress=None, *,
                            keep_partial: bool = False,
@@ -351,9 +407,10 @@ class Storage(ABC):
         write_file), and raises `error`. Returns the real path. `md5`: what the
         bytes are to hash to (the server's), for a storage that reads them back (a drive);
         `checking` hears that reading as `progress` hears the copy (done, size)."""
-        real = self.write_file(path, local, progress, keep_partial=keep_partial)
-        self._check_written(real, Path(local).stat().st_size, error, keep=keep_partial)
-        return real
+        with self._in_use():
+            real = self.write_file(path, local, progress, keep_partial=keep_partial)
+            self._check_written(real, Path(local).stat().st_size, error, keep=keep_partial)
+            return real
 
     def _check_written(self, real: str, size: int, error: type[Exception], keep: bool) -> None:
         found = self.size(real)
@@ -504,7 +561,7 @@ def _os_errors(what: str):
     try:
         yield
     except OSError as e:
-        raise DeviceError(f"{what}: {e.strerror or e}") from e
+        raise DeviceError(f"{what}: {applog.system_words(e) or e}") from e
 
 
 # Bytes written at a time when a large file is copied to a folder; one progress step each.
@@ -605,13 +662,21 @@ class LocalStorage(Storage):
             return None
         except OSError as e:
             raise DeviceError(f"{_('Cannot read {path}').format(path=real_path)}: "
-                              f"{e.strerror or e}") from e
+                              f"{applog.system_words(e) or e}") from e
         return Entry(p.name, p.is_dir(), st.st_size, st.st_mtime)
 
     def _read_start(self, real_path: str, count: int) -> bytes:
         with _os_errors(_("Cannot read {path}").format(path=real_path)), \
                 open(self._p(real_path), "rb") as f:
             return f.read(count)
+
+    def _copy_out(self, real_path: str, dest: Path, told=None) -> int:
+        with _os_errors(_("Cannot read {path}").format(path=real_path)):
+            shutil.copyfile(self._p(real_path), dest)
+        size = dest.stat().st_size
+        if told is not None:
+            told(size, size)
+        return size
 
     def _write(self, real_path: str, data: bytes) -> None:
         """As _write_file: under a temporary name, synced, then renamed."""
@@ -665,7 +730,7 @@ class LocalStorage(Storage):
             _sync_folder(target.parent)
 
     def _mkdir(self, real_path: str) -> None:
-        with _os_errors(_("Cannot create directory {path}").format(path=real_path)):
+        with _os_errors(_("Cannot create the folder {path}").format(path=real_path)):
             target = self._p(real_path)
             target.mkdir()
             _sync_folder(target.parent)

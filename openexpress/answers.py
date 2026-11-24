@@ -348,9 +348,7 @@ class Disk:
     def _own_folder(self) -> None:
         """The folder its owner's alone (0700), also one made before with the usual mode: the
         account's answers are among them."""
-        self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if self.folder.stat().st_mode & 0o777 != 0o700:
-            self.folder.chmod(0o700)
+        paths.make_private_dir(self.folder)
 
     def put(self, kind: str, full: tuple, value, tags: frozenset[str], at: float) -> None:
         """Kept on disk as the cache is used; never while it is being cleared (that does not
@@ -369,16 +367,6 @@ class Disk:
             log.info("answers: %s not kept on disk (%s)", kind, type(e).__name__)
 
     @staticmethod
-    def _read(p) -> dict | None:
-        """What the file of an answer holds; None when it does not read or is no object (a
-        file changed by hand)."""
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        return data if isinstance(data, dict) else None
-
-    @staticmethod
     def _fresh(kind: str, at, now: float) -> bool:
         """Whether an answer of `kind` given at `at` (seconds) is still fresh at `now`."""
         return isinstance(at, (int, float)) and 0 <= now - at < LIFETIMES[kind]
@@ -386,7 +374,7 @@ class Disk:
     def get(self, kind: str, full: tuple, now: float):
         if kind not in DISK_FIELDS:
             return None
-        data = self._read(self._path(full))
+        data = paths.read_json_object(self._path(full))
         if data is None:
             return None
         at = data.get("at")
@@ -398,7 +386,7 @@ class Disk:
         if not self.folder.is_dir():
             return
         for p in self.folder.glob("*.json"):
-            data = self._read(p)
+            data = paths.read_json_object(p)
             if data is None:
                 continue
             if (kinds is None or data.get("kind") in kinds) \
@@ -411,7 +399,7 @@ class Disk:
         login) would else stay until the cache is cleared."""
         gone = 0
         for p in self.folder.glob("*.json"):
-            data = self._read(p) or {}
+            data = paths.read_json_object(p) or {}
             kind = data.get("kind")
             if kind in LIFETIMES and self._fresh(kind, data.get("at"), now):
                 continue

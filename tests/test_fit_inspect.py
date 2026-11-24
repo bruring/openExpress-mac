@@ -99,7 +99,7 @@ def test_a_file_cut_short_says_what_was_read_and_what_its_header_declares(tmp_pa
 
 @pytest.mark.parametrize(("how", "check"), [
     ("wrong CRC", "Check: damaged: the CRC does not match ({size} B read)"),
-    ("data after the end", "Check: damaged: 4 B after the whole FIT data are no FIT file"),
+    ("data after the end", "Check: damaged: 4 B after the end of the FIT data do not belong to a FIT file"),
 ])
 def test_a_damaged_file_exits_with_1(tmp_path, capsys, how, check):
     data = a_course(bad_crc=True) if how == "wrong CRC" else a_course() + b"junk"

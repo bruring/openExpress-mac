@@ -21,7 +21,6 @@ from openexpress import crashes, diagnostics, history
 # from some megabytes to tens of gigabytes).
 LITTLE_SHARE = 0.10
 LITTLE_BYTES = 500_000_000
-RECENT = timedelta(days=30)
 SHOWN_EVENTS = 5
 # A device log whose first line came this soon after the device was first seen began with that
 # connection: its version is the one of then.
@@ -48,7 +47,7 @@ def little_space(free: int | None, capacity: int | None) -> bool | None:
 
 def recent(found: list[crashes.Crash], now: datetime) -> list[crashes.Crash]:
     """The crashes of the last 30 days by the device's clock, newest first."""
-    return [c for c in found if now - RECENT <= c.at <= now + timedelta(days=1)]
+    return [c for c in found if diagnostics.is_recent(c.at, now)]
 
 
 @dataclass
@@ -193,8 +192,16 @@ def dumps_now(device, storage, found) -> tuple[int, int] | None:
     in the device log (every count puts it right, the command line's too), else as the window
     listed them at the opening (`found`); None: not known. Nothing is asked of the device: the
     summary of the page, its row and the report alike."""
-    line = (history.connection_line(device, storage)
+    return _dumps_in(_connection_line(device, storage), found)
+
+
+def _connection_line(device, storage) -> dict | None:
+    """This connection's line in the device log (history.connection_line); None without one."""
+    return (history.connection_line(device, storage)
             if getattr(device, "unit_id", None) and storage is not None else None)
+
+
+def _dumps_in(line: dict | None, found) -> tuple[int, int] | None:
     if line is not None and "dumps" in line:
         return line["dumps"]["count"], line["dumps"]["bytes"]
     if found is not None and found.dumps_known:
@@ -232,10 +239,11 @@ def told(session) -> Told:
     unit = getattr(device, "unit_id", None)
     test_drive = bool(getattr(storage, "test_drive", False))
     free, capacity = getattr(session, "space", None) or (None, None)
-    categories, counted_at, recounted = kinds_counted(session)
+    line = _connection_line(device, storage)
+    categories, counted_at, recounted = kinds_counted(line, session)
     errors_known = found is not None and found.errors_known
     found_crashes = crashes_known(device, storage, found)
-    dumps = dumps_now(device, storage, found)
+    dumps = _dumps_in(line, found)
     copies = diagnostics.copies_facts(unit, test_drive) if unit else (0, 0, None)
     hidden = diagnostics.hidden_logs_to_copy(found is not None and found.hidden_logs, unit,
                                              test_drive)
@@ -248,15 +256,12 @@ def told(session) -> Told:
                 hidden, copies, has, behind)
 
 
-def kinds_counted(session) -> tuple[dict[str, int], datetime | None, bool]:
+def kinds_counted(line: dict | None, session) -> tuple[dict[str, int], datetime | None, bool]:
     """The kinds of file of the open device, when they were counted, and whether that was
-    after the connection: from this connection's line in the device log (history.
+    after the connection: from this connection's line in the device log (`line`, history.
     connection_line; every count, of the window or the command line, puts it right), else
     from the window's own count (session.recount: a device the log does not keep). Nothing is
     asked of the device."""
-    device, storage = getattr(session, "device", None), getattr(session, "storage", None)
-    line = (history.connection_line(device, storage)
-            if getattr(device, "unit_id", None) and storage is not None else None)
     counted = getattr(session, "recount", None)
     if line is not None:
         return (dict(line["categories"]), history.counted_time(line),

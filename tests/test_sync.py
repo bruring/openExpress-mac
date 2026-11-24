@@ -117,6 +117,23 @@ def test_failed_upload_kept_as_pending(device_root, tmp_path):
     assert not state.pending_files("FIT_TYPE_4")
 
 
+def test_an_error_nobody_foresaw_is_said_filtered_and_never_empty(device_root, tmp_path):
+    """A file not uploaded for a reason nobody foresaw: its words filtered as the log is (a
+    path as <path>), the name of the error when it has none."""
+    from pathlib import Path
+
+    st, dev, state = _setup(device_root, tmp_path)
+    plan = sync.plan_uploads(dev, st, UPLOAD_CONFIG, state, only_types={"FIT_TYPE_4"})
+    errors = iter([RuntimeError(""), RuntimeError(f"cannot read {Path.home()}/made-up")])
+
+    class Failing(SyncClient):
+        def upload_file(self, url, data, *, is_zip, last_file, authenticated):
+            raise next(errors)
+
+    rep = sync.run_uploads(plan, dev, st, Failing(), state)
+    assert sorted(why for _label, why in rep.failed) == ["RuntimeError", "cannot read <path>"]
+
+
 def _failed_once(device_root, tmp_path):
     """A sync whose uploads of activities failed: a copy of each waits in sync/pending."""
     st, dev, state = _setup(device_root, tmp_path)

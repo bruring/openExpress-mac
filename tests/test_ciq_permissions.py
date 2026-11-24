@@ -251,6 +251,30 @@ def test_a_sync_never_asks_the_store_for_updates(iq_device, monkeypatch):
     assert errors == []
 
 
+def test_names_not_read_from_the_store_are_said_in_the_log(iq_device, monkeypatch, caplog):
+    """The names of the account's apps only make the lines readable: not read, the sync goes on
+    with the IDs, and the log says why there are no names."""
+    from openexpress import connect, service
+
+    class Store:
+        def __init__(self, client):
+            pass
+
+        def account_apps(self, device, locale):
+            raise connect.ApiError("made-up refusal")
+
+    monkeypatch.setattr(ciq, "StoreApi", Store)
+    st, dev = iq_device
+    s = types.SimpleNamespace(device=dev, storage=st, client=_client(),
+                              settings=types.SimpleNamespace(locale="en_US"))
+    errors = []
+    with caplog.at_level("INFO", logger="openexpress.service"):
+        assert service._install_queued_apps(s, [], lambda m: None, errors, []) == []
+    assert errors == []
+    assert [r.getMessage() for r in caplog.records if r.name == "openexpress.service"] == [
+        "apps: names from the store not read (ApiError)"]
+
+
 @pytest.mark.needs_display
 def test_the_question_in_polish(monkeypatch):
     from openexpress import i18n

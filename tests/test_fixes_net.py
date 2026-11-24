@@ -130,7 +130,7 @@ def test_exchange_ticket_missing_secret(monkeypatch, server):
     assert c.exchange_ticket("T", "svc") == ("abc", "def")
 
 
-def test_a_network_error_in_the_ticket_exchange_does_not_show_the_ticket(monkeypatch):
+def test_a_network_error_in_the_ticket_exchange_does_not_show_the_ticket(monkeypatch, caplog):
     ticket = "ST-0123456-AbCdEfGhIjKlMnOp-cas"
 
     def refused(self, method, url, **kw):
@@ -144,13 +144,15 @@ def test_a_network_error_in_the_ticket_exchange_does_not_show_the_ticket(monkeyp
 
     monkeypatch.setattr(requests.Session, "request", refused)
     c = GarminClient(Settings(client_guid="g"), Consumer("ckey", "csecret"))
-    with pytest.raises(ApiError) as error:
+    with caplog.at_level(logging.INFO, logger="openexpress"), \
+            pytest.raises(ApiError) as error:
         c.exchange_ticket(ticket, "https://sso.garmin.com/sso/embed")
-    text = str(error.value)  # what the window and the command line show
-    assert "ST-" not in text and "AbCdEfGhIjKlMnOp" not in text
-    # It still says what happened, and with which server.
-    assert text.startswith("Ticket exchange: network error (")
-    assert "connectapi.garmin.com" in text and "Connection refused" in text
+    # What the window and the command line show.
+    assert str(error.value) == "Ticket exchange: network error (no connection)"
+    # The log file says what happened, and with which server, without the ticket.
+    (logged,) = [r.getMessage() for r in caplog.records if "HTTPSConnectionPool" in r.getMessage()]
+    assert "ST-" not in logged and "AbCdEfGhIjKlMnOp" not in logged
+    assert "connectapi.garmin.com" in logged and "Connection refused" in logged
 
 
 # --- polling where an upload is processed -----------------------------------------------
@@ -180,6 +182,27 @@ def test_a_failed_upload_status_check_logs_no_address(monkeypatch, caplog, whole
             if r.getMessage().startswith("Upload status check failed")]
     assert len(said) == 1 and "<address>" in said[0]
     assert "upload-service" not in said[0] and "424242" not in said[0]
+
+
+def test_the_command_line_does_not_repeat_a_failed_upload_status_check(monkeypatch, capsys):
+    """The sync says it itself: "Garmin Connect did not confirm processing of …"."""
+    from openexpress import cli
+
+    c = make_client(monkeypatch, unused_url())
+    url = c.connect_url("upload-service/upload/424242?ticket=made-up")
+    monkeypatch.setattr(cli, "cmd_info", lambda args: c.poll_location(url, 1, timeout_s=5))
+    assert cli.main(["info"]) == 0
+    assert "Upload status check failed" not in capsys.readouterr().err
+
+
+def test_a_failed_upload_status_check_stays_in_the_log_file(monkeypatch, log_file):
+    from openexpress import cli
+
+    c = make_client(monkeypatch, unused_url())
+    url = c.connect_url("upload-service/upload/424242?ticket=made-up")
+    monkeypatch.setattr(cli, "cmd_info", lambda args: c.poll_location(url, 1, timeout_s=5))
+    assert cli.main(["info"]) == 0
+    assert log_file.read_text(encoding="utf-8").count("Upload status check failed") == 1
 
 
 def test_poll_location_relative_and_clamped(monkeypatch, server):
